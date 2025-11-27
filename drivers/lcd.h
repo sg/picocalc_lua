@@ -49,6 +49,7 @@ typedef struct {
 	uint8_t term_height;
 	u16* glyph_colorbuf;
 	char firstcode;
+	char* font_file;
 } font_t;
 
 extern font_t font;

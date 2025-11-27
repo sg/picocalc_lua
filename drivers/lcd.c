@@ -87,7 +87,7 @@ static void lcd_set_region(int x1, int y1, int x2, int y2) {
 	lcd_write_cmd(cmd2, 5);
 	uint8_t cmd = 0x2c; // RAMWR
 	lcd_write_cmd(&cmd, 1);
-	sleep_us(1);
+	busy_wait_us(1);
 	lcd_set_dc_cs(1, 0);
 }
 
@@ -323,6 +323,7 @@ font_t font = {
 int lcd_load_font(const char* filename) {
 	if (font.glyphs) { free(font.glyphs); font.glyphs = NULL; }
 	if (font.glyph_colorbuf) { free(font.glyph_colorbuf); font.glyph_colorbuf = NULL; }
+	if (font.font_file) { free(font.font_file); font.font_file = NULL; }
 
 	if (!filename || filename[0] == '\0') {
 		font.glyphs = malloc(2049 * sizeof(u8));
@@ -353,6 +354,8 @@ int lcd_load_font(const char* filename) {
 		res = f_read(&fp, font.glyphs, font.glyph_count * bytesize, NULL);
 		if (res != FR_OK) return res;
 		f_close(&fp);
+
+		font.font_file = strdup(filename);
 	}
 
 	font.bytewidth = font.glyph_width/8 + (font.glyph_width % 8 != 0);

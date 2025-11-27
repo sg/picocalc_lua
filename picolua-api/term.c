@@ -48,6 +48,12 @@ static int l_term_getFontSize(lua_State* L) {
 	return 2;
 }
 
+static int l_term_getFont(lua_State* L) {
+	if (font.font_file) lua_pushstring(L, font.font_file);
+	else lua_pushnil(L);
+	return 1;
+}
+
 static int l_term_clear(lua_State* L) {
 	term_clear();
 	return 0;
@@ -134,6 +140,7 @@ int luaopen_term(lua_State *L) {
 		{"setCursorBlink", l_term_setCursorBlink},
 		{"getSize", l_term_getSize},
 		{"getFontSize", l_term_getFontSize},
+		{"getFont", l_term_getFont},
 		{"clear", l_term_clear},
 		{"clearLine", l_term_clearLine},
 		{"getTextColor", l_term_getTextColor},

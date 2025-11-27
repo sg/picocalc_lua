@@ -63,6 +63,8 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 	- [`write(text)`](#writetext)
 	- [`blit(text, fg, bg)`](#blittext-fg-bg)
 	- [`loadFont(filename)`](#loadfontfilename)
+	- [`getFont()`](#getfont)
+	- [`getFontSize()`](#getfontsize)
 - [`draw` - Drawing functions](#draw---drawing-functions)
 	- [`text(x, y, text, [fg], [bg], [align])`](#textx-y-text-fg-bg-align)
 	- [`clear()`](#clear-1)
@@ -554,6 +556,19 @@ Loads a font from the SD card, falling back to the default built-in font in case
 
 **Returns**
 1. `boolean` - Whether or not loading the font was successful
+
+## `getFont()`
+Checks which font file is currently being used by the terminal
+
+**Returns**
+1. `string | nil` - The filename of the font, nil if no font is loaded and the terminal is using the built-in default
+
+## `getFontSize()`
+Returns the size of each glyph of the font currently being used by the terminal
+
+**Returns**
+1. `number` - The width of each glyph in pixels
+2. `number` - The height of each glyph in pixels
 
 
 # `draw` - Drawing functions
