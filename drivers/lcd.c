@@ -39,6 +39,7 @@ uint lcd_offset;
 
 uint8_t* framebuffer;
 int framebuffer_mode;
+int lcd_current_height;
 
 #define LCD_TMPBUF_SIZE LCD_WIDTH*2
 uint16_t lcd_tmpbuf[LCD_TMPBUF_SIZE];
@@ -115,15 +116,18 @@ void lcd_off() {
 	lcd_write_cmd(&cmd, 1);
 }
 
-static inline void normalize_coords(int* x, int* y, int* width, int* height, int scrheight) {
-	*y %= scrheight;
+static inline void normalize_coords(int* x, int* y, int* width, int* height) {
+	if (*y < 0) { *height += *y; *y = 0; }
+	*y %= lcd_current_height;
 	*x = (*x < 0 ? 0 : (*x >= LCD_WIDTH ? LCD_WIDTH : *x));
 	*width = (*width < 0 ? 0 : (*x + *width >= LCD_WIDTH ? LCD_WIDTH - *x : *width));
-	*height = (*height < 0 ? 0 : (*y + *height >= scrheight ? scrheight - *y : *height));
+	*height = (*height < 0 ? 0 : (*y + *height >= lcd_current_height ? lcd_current_height - *y : *height));
 }
 
 static void lcd_direct_draw(u16* pixels, int x, int y, int width, int height) {
-	normalize_coords(&x, &y, &width, &height, MEM_HEIGHT);
+	if (y < 0) { pixels -= y * width; height += y; y = 0; }
+	// TODO: clip negative X as well
+	normalize_coords(&x, &y, &width, &height);
 	lcd_set_region(x, y, x + width - 1, y + height - 1);
 
 	lcd_write16(pixels, width * height);
@@ -133,7 +137,7 @@ static void lcd_direct_draw(u16* pixels, int x, int y, int width, int height) {
 }
 
 static void lcd_direct_fill(u16 color, int x, int y, int width, int height) {
-	normalize_coords(&x, &y, &width, &height, MEM_HEIGHT);
+	normalize_coords(&x, &y, &width, &height);
 	lcd_set_region(x, y, x + width - 1, y + height - 1);
 	
 	for (size_t i = 0; i < width * height; ++i) {
@@ -154,7 +158,7 @@ static void lcd_direct_clear() {
 }
 
 static void lcd_psram_draw(u16* pixels, int x, int y, int width, int height) {
-	normalize_coords(&x, &y, &width, &height, LCD_HEIGHT);
+	normalize_coords(&x, &y, &width, &height);
 
 	int remain;
 	for (uint32_t iy = y * LCD_WIDTH; iy < (y + height) * LCD_WIDTH; iy += LCD_WIDTH) {
@@ -168,7 +172,7 @@ static void lcd_psram_draw(u16* pixels, int x, int y, int width, int height) {
 }
 
 static void lcd_psram_fill(u16 color, int x, int y, int width, int height) {
-	normalize_coords(&x, &y, &width, &height, LCD_HEIGHT);
+	normalize_coords(&x, &y, &width, &height);
 
 	int remain;
 	for (int i = 0; i < 10; i++) lcd_tmpbuf[i] = color;
@@ -191,7 +195,7 @@ static void lcd_psram_clear() {
 }
 
 static void lcd_ram_draw(u16* pixels, int x, int y, int width, int height) {
-	normalize_coords(&x, &y, &width, &height, LCD_HEIGHT);
+	normalize_coords(&x, &y, &width, &height);
 
 	for (uint32_t iy = y * LCD_WIDTH; iy < (y + height) * LCD_WIDTH; iy += LCD_WIDTH) {
 		for (uint32_t ix = x; ix < (x + width); ix++) {
@@ -201,7 +205,7 @@ static void lcd_ram_draw(u16* pixels, int x, int y, int width, int height) {
 }
 
 static void lcd_ram_fill(u16 color, int x, int y, int width, int height) {
-	normalize_coords(&x, &y, &width, &height, LCD_HEIGHT);
+	normalize_coords(&x, &y, &width, &height);
 
 	for (uint32_t iy = y * LCD_WIDTH; iy < (y + height) * LCD_WIDTH; iy += LCD_WIDTH) {
 		memset(framebuffer + x + iy, lcd_to8[color], width);
@@ -272,6 +276,7 @@ bool lcd_buffer_enable_local(int mode) {
 		lcd_point_ptr = &lcd_direct_point;
 		lcd_clear_ptr = &lcd_direct_clear;
 		framebuffer_mode = mode;
+		lcd_current_height = MEM_HEIGHT;
 		return true;
 	} else if (mode == LCD_BUFFERMODE_PSRAM) {
 		lcd_draw_ptr = &lcd_psram_draw;
@@ -279,6 +284,7 @@ bool lcd_buffer_enable_local(int mode) {
 		lcd_point_ptr = &lcd_psram_point;
 		lcd_clear_ptr = &lcd_psram_clear;
 		framebuffer_mode = mode;
+		lcd_current_height = LCD_HEIGHT;
 		return true;
 	} else if (mode == LCD_BUFFERMODE_RAM) {
 		if (!framebuffer) {
@@ -289,6 +295,7 @@ bool lcd_buffer_enable_local(int mode) {
 				lcd_point_ptr = &lcd_ram_point;
 				lcd_clear_ptr = &lcd_ram_clear;
 				framebuffer_mode = mode;
+				lcd_current_height = LCD_HEIGHT;
 				return true;
 			}
 		}
@@ -515,7 +522,7 @@ int lcd_fifo_receiver(uint32_t message) {
 
 		case FIFO_LCD_BUFEN:
 			x = multicore_fifo_pop_blocking_inline();
-			multicore_fifo_push_blocking_inline(lcd_buffer_enable_local(x));
+			multicore_fifo_push_blocking_inline((uint32_t)lcd_buffer_enable_local((int)x));
 			return 1;
 
 		case FIFO_LCD_BUFBLIT:
