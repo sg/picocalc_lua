@@ -16,6 +16,7 @@
 #include "../drivers/keyboard.h"
 #include "../drivers/fs.h"
 #include "../drivers/sound.h"
+#include "../drivers/lcd.h"
 #include "../corelua.h"
 
 static int callback_reference = 0;
@@ -38,6 +39,7 @@ uint32_t get_system_mhz() {
 bool set_system_mhz(uint32_t clk) {
 	if (set_sys_clock_khz(clk * 1000ull, true)) {
 		sound_setclk();
+		lcd_reset_pio();
 		return true;
 	}
 	return false;
@@ -164,8 +166,7 @@ static int l_get_battery(lua_State* L) {
 
 static int l_get_clock(lua_State* L) {
 	lua_pushinteger(L, get_system_mhz());
-	lua_pushinteger(L, spi_get_baudrate(spi1));
-	return 2;
+	return 1;
 }
 
 static int l_set_clock(lua_State* L) {

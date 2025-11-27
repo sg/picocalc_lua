@@ -170,7 +170,6 @@ Gets the current CPU clock speed
 
 **Returns**
 1. `number` - Current clock speed in MHz
-2. `number` - Current SPI baudrate
 
 ## `setClock(speed)`
 Sets the CPU clock speed

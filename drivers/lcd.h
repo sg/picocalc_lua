@@ -55,6 +55,7 @@ typedef struct {
 
 extern font_t font;
 
+void lcd_reset_pio();
 void lcd_init();
 void lcd_on();
 void lcd_off();

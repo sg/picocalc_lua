@@ -8,6 +8,7 @@
 
 #include "hardware/gpio.h"
 #include "hardware/pio.h"
+#include "hardware/clocks.h"
 #include "st7789_lcd.pio.h"
 #include "psram_spi.h"
 
@@ -444,6 +445,16 @@ static const uint8_t st7789_init_seq[] = {
 	0
 };
 
+void lcd_reset_pio() {
+	int cpu_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS);
+	float clkdiv = 1.f;
+	if (cpu_khz > 200000) {
+		clkdiv = 1.5f;
+	}
+	st7789_lcd_program_init(LCD_PIO, lcd_sm, lcd_offset, LCD_TX, LCD_SCK, clkdiv);
+	psram_spi = psram_spi_init_clkdiv(pio0, 0, clkdiv, true);
+}
+
 void lcd_init() {
 	// Init GPIO
 	gpio_init(LCD_SCK);
@@ -462,7 +473,7 @@ void lcd_init() {
 
 	// Init PIO
 	lcd_offset = pio_add_program(LCD_PIO, &st7789_lcd_program);
-	st7789_lcd_program_init(LCD_PIO, lcd_sm, lcd_offset, LCD_TX, LCD_SCK, SERIAL_CLK_DIV);
+	lcd_reset_pio();
 
 	lcd_set_dc_cs(0, 1);
 	gpio_put(LCD_RST, 1);
@@ -477,7 +488,6 @@ void lcd_init() {
 	lcd_initcmd(st7789_init_seq);
 	lcd_set_dc_cs(0, 1);
 
-	psram_spi = psram_spi_init(pio0, -1);
 	lcd_buffer_enable(0);
 
 	lcd_load_font(NULL);
