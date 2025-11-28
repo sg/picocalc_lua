@@ -686,6 +686,7 @@ void editorDelChar() {
 		E.cy--;
 	}
 
+	E.want_rx = editorRowCxToRx(row, E.cx);
 	E.redraw_rows = true;
 }
 
@@ -723,6 +724,7 @@ void editorDelMark() {
 
 	E.cx = m1x;
 	E.cy = m1y;
+	E.want_rx = editorRowCxToRx(&E.row[E.cy], E.cx);
 
 	editorEnterExitMark();
 }
