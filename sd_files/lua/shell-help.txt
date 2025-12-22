@@ -1,0 +1,173 @@
+================================================================================
+                         PicoCalc Shell Documentation
+================================================================================
+
+OVERVIEW
+--------
+The PicoCalc shell is an extensible command-line interface with built-in
+commands and support for user-defined external commands.
+
+Built-in commands are defined in shell.lua.
+External commands can be added by placing .lua files in /lua/shell/commands/
+
+
+BUILT-IN COMMANDS
+-----------------
+  help [cmd]          Show help for all or specific command
+  exit                Exit the shell (aliases: quit, q)
+
+  ls [dir]            List directory contents (aliases: dir, list)
+  cd [dir|..|-]       Change directory (- returns to previous)
+  pwd                 Print current working directory
+
+  cat <file>          Display file contents (alias: type)
+  edit <file>         Open file in editor (aliases: vi, nano)
+  head <file> [n]     Display first n lines (default 10)
+  tail <file> [n]     Display last n lines (default 10)
+  hexdump <file> [n]  Hex dump of file (aliases: xxd, hd)
+
+  rm <file>           Delete file (aliases: del, delete)
+  mkdir <dir>         Create directory
+  rmdir <dir>         Remove empty directory
+  mv <src> <dst>      Move or rename file (aliases: rename, ren)
+  cp <src> <dst>      Copy file (alias: copy)
+
+  eval <code>         Execute Lua code (aliases: exec, lua)
+  run <file>          Execute Lua script (alias: dofile)
+
+  clear               Clear the screen (alias: cls)
+  info                Show system information (alias: sysinfo)
+
+
+EXTERNAL COMMANDS
+-----------------
+Located in /lua/shell/commands/
+
+  wifi [action]       Wi-Fi management (alias: wlan)
+                      Actions: status, on, off, scan
+
+  ping <host> [port]  TCP connectivity test (alias: tcping)
+                      Tests connection to host:port (default port 80)
+
+  fetch <url> [file]  Download URL (aliases: wget, get)
+                      Prints to console or saves to file
+
+  hexdump <file> [n]  Hex dump of file (aliases: xxd, hd)
+                      Shows first n bytes (default 256)
+
+  head <file> [n]     Show first n lines of file (default 10)
+
+  tail <file> [n]     Show last n lines of file (default 10)
+
+
+PATH HANDLING
+-------------
+  /path/to/file       Absolute path
+  filename            Relative to current directory
+  ..                  Parent directory
+  ../dir              Relative path with parent
+  -                   Previous directory (cd - to go back)
+
+
+CREATING EXTERNAL COMMANDS
+--------------------------
+To add a new command, create a .lua file in /lua/shell/commands/
+
+The file must return a table with the following structure:
+
+    return {
+        name = "commandname",           -- required: command name
+        aliases = {"alias1", "alias2"}, -- optional: alternative names
+        help = "'cmd <arg>' - description",  -- required: help text
+        run = function(args, sh)        -- required: handler function
+            -- args: table of command arguments
+            -- sh: shell object with utilities
+
+            -- Your command logic here
+        end
+    }
+
+Example command (/lua/shell/commands/greet.lua):
+
+    return {
+        name = "greet",
+        aliases = {"hello", "hi"},
+        help = "'greet [name]' - print a greeting",
+        run = function(args, sh)
+            local name = args[1] or "World"
+            print("Hello, " .. name .. "!")
+        end
+    }
+
+
+SHELL UTILITIES (available in command handlers)
+-----------------------------------------------
+The shell object (sh) provides these utility functions:
+
+  sh:resolve_path(path)     Resolve relative path to absolute
+  sh:normalize_path(path)   Clean up path (handle . and ..)
+  sh:change_dir(path)       Change current directory
+
+  sh:error(msg)             Print error message (red)
+  sh:warn(msg)              Print warning message (yellow)
+  sh:success(msg)           Print success message (green)
+  sh:color(name, text)      Wrap text in color
+
+  sh:print_dir(entries)     Print directory listing
+  sh:format_size(bytes)     Format size as B/KB/MB
+  sh:parse_input(str)       Parse string into cmd and args
+
+Shell state:
+  sh.cwd                    Current working directory
+  sh.prev_cwd               Previous working directory
+  sh.running                Set to false to exit shell
+  sh.commands               Table of registered commands
+  sh.colors                 Table of ANSI color codes
+
+Available colors:
+  black, red, green, yellow, blue, magenta, cyan, white
+
+
+EXAMPLES
+--------
+List files in current directory:
+  ls
+
+Change to lua directory:
+  cd lua
+
+Edit a file:
+  edit myfile.lua
+
+Run a Lua script:
+  run test.lua
+
+Execute Lua code directly:
+  eval print("Hello!")
+  eval return 2 + 2
+
+Connect to Wi-Fi:
+  wifi on
+
+Check Wi-Fi status:
+  wifi status
+
+Scan for networks:
+  wifi scan
+
+Test connectivity:
+  ping example.com
+  ping 192.168.1.1 22
+
+Download a file:
+  fetch https://example.com
+  fetch https://example.com/file.txt output.txt
+
+View file in hex:
+  hexdump binary.dat 512
+
+View first/last lines:
+  head logfile.txt 20
+  tail logfile.txt 5
+
+================================================================================
