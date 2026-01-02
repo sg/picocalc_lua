@@ -1,6 +1,6 @@
 --[[
-    wifi-stop.lua
-    Disconnect from Wi-Fi network and optionally deinitialize.
+  wifi-stop.lua
+  Disconnect from Wi-Fi network and optionally deinitialize.
 ]]
 
 -- Check current state

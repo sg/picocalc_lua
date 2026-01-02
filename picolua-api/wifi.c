@@ -12,12 +12,10 @@
 #include "../drivers/wifi.h"
 #include "modules.h"
 
-// ============================================================
-// Initialization Functions
-// ============================================================
+// init functions 
 
 // wifi.init([country]) -> boolean
-// Initialize the Wi-Fi hardware. Optional 2-letter country code (e.g., "US", "GB").
+// country is two letter string (e.g., "US", "GB").
 static int l_wifi_init(lua_State* L) {
     const char* country = luaL_optstring(L, 1, NULL);
     bool result;
@@ -33,7 +31,7 @@ static int l_wifi_init(lua_State* L) {
 }
 
 // wifi.deinit() -> nil
-// Shutdown Wi-Fi hardware and free resources.
+// shutdown hardware and free resources
 static int l_wifi_deinit(lua_State* L) {
     (void)L;
     wifi_deinit();
@@ -41,20 +39,17 @@ static int l_wifi_deinit(lua_State* L) {
 }
 
 // wifi.isInitialized() -> boolean
-// Check if Wi-Fi is initialized.
 static int l_wifi_is_initialized(lua_State* L) {
     lua_pushboolean(L, wifi_is_initialized());
     return 1;
 }
 
-// ============================================================
-// Scanning Functions
-// ============================================================
+// scanning functions
 
 // wifi.scan() -> table|nil, string
-// Perform a blocking scan for available networks.
-// Returns a table of networks: {{ssid="...", rssi=-50, channel=6, secure=true, authMode=4, bssid="AA:BB:CC:DD:EE:FF"}, ...}
-// Returns nil, error_message on failure.
+// a blocking scan for available networks
+// returns table of networks: {{ssid="...", rssi=-50, channel=6, secure=true, authMode=4, bssid="AA:BB:CC:DD:EE:FF"}, ...}
+// returns nil, error_message on failure
 static int l_wifi_scan(lua_State* L) {
     if (!wifi_is_initialized()) {
         lua_pushnil(L);
@@ -71,13 +66,13 @@ static int l_wifi_scan(lua_State* L) {
 
     int count = wifi_scan_get_count();
 
-    // Create results table
+    // create table to hold results
     lua_createtable(L, count, 0);
 
     for (int i = 0; i < count; i++) {
         wifi_scan_result_t* r = wifi_scan_get_result(i);
         if (r != NULL) {
-            // Create table for this network
+            // create table for this network
             lua_createtable(L, 0, 6);
 
             // ssid
@@ -92,7 +87,7 @@ static int l_wifi_scan(lua_State* L) {
             lua_pushinteger(L, r->channel);
             lua_setfield(L, -2, "channel");
 
-            // secure (boolean - true if any authentication required)
+            // secure (boolean - true if any auth required)
             lua_pushboolean(L, r->auth_mode != 0);
             lua_setfield(L, -2, "secure");
 
@@ -100,7 +95,7 @@ static int l_wifi_scan(lua_State* L) {
             lua_pushinteger(L, r->auth_mode);
             lua_setfield(L, -2, "authMode");
 
-            // bssid (MAC address as string)
+            // bssid (string)
             char bssid_str[18];
             snprintf(bssid_str, sizeof(bssid_str), "%02X:%02X:%02X:%02X:%02X:%02X",
                 r->bssid[0], r->bssid[1], r->bssid[2],
@@ -108,7 +103,7 @@ static int l_wifi_scan(lua_State* L) {
             lua_pushstring(L, bssid_str);
             lua_setfield(L, -2, "bssid");
 
-            // Add to results array (1-indexed)
+            // add to results array 
             lua_rawseti(L, -2, i + 1);
         }
     }
@@ -119,14 +114,11 @@ static int l_wifi_scan(lua_State* L) {
     return 1;
 }
 
-// ============================================================
-// Connection Functions
-// ============================================================
+// connection functions
 
 // wifi.connect(ssid, password, [auth], [timeout_ms]) -> boolean, string|nil
-// Connect to a Wi-Fi network (blocking).
 // auth: wifi.AUTH_OPEN, wifi.AUTH_WPA2 (default), wifi.AUTH_WPA3
-// timeout_ms: connection timeout in milliseconds (default: 30000)
+// timeout_ms: connection timeout (default: 30000)
 static int l_wifi_connect(lua_State* L) {
     const char* ssid = luaL_checkstring(L, 1);
     const char* password = luaL_optstring(L, 2, "");
@@ -146,7 +138,6 @@ static int l_wifi_connect(lua_State* L) {
         return 1;
     } else {
         lua_pushboolean(L, false);
-        // Provide descriptive error message based on result code
         switch (result) {
             case -1:
                 lua_pushstring(L, "connection failed");
@@ -166,7 +157,7 @@ static int l_wifi_connect(lua_State* L) {
 }
 
 // wifi.disconnect() -> nil
-// Disconnect from the current Wi-Fi network.
+// disconnect from the wifi network
 static int l_wifi_disconnect(lua_State* L) {
     (void)L;
     wifi_disconnect();
@@ -174,26 +165,23 @@ static int l_wifi_disconnect(lua_State* L) {
 }
 
 // wifi.status() -> integer
-// Get current connection status code.
-// Returns wifi.STATUS_DOWN, STATUS_JOIN, STATUS_NOIP, STATUS_UP, etc.
+// returns wifi.STATUS_DOWN, STATUS_JOIN, STATUS_NOIP, STATUS_UP, etc
 static int l_wifi_status(lua_State* L) {
     lua_pushinteger(L, (int)wifi_get_status());
     return 1;
 }
 
 // wifi.isConnected() -> boolean
-// Returns true if connected and have an IP address.
+// returns true if connected and we have an IP address
 static int l_wifi_is_connected(lua_State* L) {
     lua_pushboolean(L, wifi_get_status() == WIFI_STATUS_UP);
     return 1;
 }
 
-// ============================================================
-// Network Information Functions
-// ============================================================
+// network Information Functions
 
 // wifi.getIP() -> string|nil
-// Get the current IP address, or nil if not connected.
+// get current IP addres or nil if not connected
 static int l_wifi_get_ip(lua_State* L) {
     char ip[16];
     if (wifi_get_ip(ip, sizeof(ip))) {
@@ -205,7 +193,7 @@ static int l_wifi_get_ip(lua_State* L) {
 }
 
 // wifi.getGateway() -> string|nil
-// Get the gateway address, or nil if not connected.
+// get the gateway address or nil if not connected
 static int l_wifi_get_gateway(lua_State* L) {
     char gw[16];
     if (wifi_get_gateway(gw, sizeof(gw))) {
@@ -217,7 +205,7 @@ static int l_wifi_get_gateway(lua_State* L) {
 }
 
 // wifi.getNetmask() -> string|nil
-// Get the subnet mask, or nil if not connected.
+// get subnet mask or nil if not connected
 static int l_wifi_get_netmask(lua_State* L) {
     char nm[16];
     if (wifi_get_netmask(nm, sizeof(nm))) {
@@ -229,8 +217,8 @@ static int l_wifi_get_netmask(lua_State* L) {
 }
 
 // wifi.getInfo() -> table|nil
-// Returns a table with all network info: {ip="...", gateway="...", netmask="..."}
-// Returns nil if not connected.
+// returns a table with all network info: {ip="...", gateway="...", netmask="..."}
+// returns nil if not connected
 static int l_wifi_get_info(lua_State* L) {
     if (wifi_get_status() != WIFI_STATUS_UP) {
         lua_pushnil(L);
@@ -259,27 +247,25 @@ static int l_wifi_get_info(lua_State* L) {
     return 1;
 }
 
-// ============================================================
-// Module Registration
-// ============================================================
+// module registration
 
 int luaopen_wifi(lua_State *L) {
     static const luaL_Reg wifilib_f[] = {
-        // Initialization
+        // initialization
         {"init", l_wifi_init},
         {"deinit", l_wifi_deinit},
         {"isInitialized", l_wifi_is_initialized},
 
-        // Scanning
+        // scanning
         {"scan", l_wifi_scan},
 
-        // Connection
+        // connection
         {"connect", l_wifi_connect},
         {"disconnect", l_wifi_disconnect},
         {"status", l_wifi_status},
         {"isConnected", l_wifi_is_connected},
 
-        // Network info
+        // network info
         {"getIP", l_wifi_get_ip},
         {"getGateway", l_wifi_get_gateway},
         {"getNetmask", l_wifi_get_netmask},
@@ -290,12 +276,12 @@ int luaopen_wifi(lua_State *L) {
 
     luaL_newlib(L, wifilib_f);
 
-    // Authentication mode constants
+    // auth mode constants
     lua_pushintegerconstant(L, "AUTH_OPEN", WIFI_AUTH_OPEN);
     lua_pushintegerconstant(L, "AUTH_WPA2", WIFI_AUTH_WPA2);
     lua_pushintegerconstant(L, "AUTH_WPA3", WIFI_AUTH_WPA3);
 
-    // Status constants
+    // status constants
     lua_pushintegerconstant(L, "STATUS_DOWN", WIFI_STATUS_DOWN);
     lua_pushintegerconstant(L, "STATUS_JOIN", WIFI_STATUS_JOIN);
     lua_pushintegerconstant(L, "STATUS_NOIP", WIFI_STATUS_NOIP);

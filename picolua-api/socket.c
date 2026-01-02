@@ -1,6 +1,5 @@
 /*
- * Socket Lua bindings for PicoCalc
- * Provides TCP/UDP socket communication to Lua scripts
+ * Socket bindings for picocalc_lua
  */
 #include <stdlib.h>
 #include <string.h>
@@ -19,23 +18,20 @@
 #define TLS_SOCKET_HANDLE "TLSSocket"
 #define SOCKET_VERSION "2.0"
 
-// Default receive buffer size
 #define DEFAULT_RECV_SIZE 1024
 #define MAX_RECV_SIZE 8192
 
-// Lua socket userdata wrapper
+// standard socket
 typedef struct {
     socket_handle_t* handle;
 } lua_socket_t;
 
-// Lua TLS socket userdata wrapper
+// TLS socket
 typedef struct {
     tls_socket_t* handle;
 } lua_tls_socket_t;
 
-// ============================================================
-// Helper Functions
-// ============================================================
+// helper functions
 
 static lua_socket_t* checksocket(lua_State* L, int index) {
     lua_socket_t* sock = (lua_socket_t*)luaL_checkudata(L, index, SOCKET_HANDLE);
@@ -55,9 +51,7 @@ static int push_socket_error(lua_State* L, int err) {
     return 2;
 }
 
-// ============================================================
-// Socket Creation Functions
-// ============================================================
+// socket creation 
 
 // socket.tcp() -> Socket
 static int l_socket_tcp(lua_State* L) {
@@ -107,9 +101,7 @@ static int l_socket_udp(lua_State* L) {
     return 1;
 }
 
-// ============================================================
-// Socket Methods
-// ============================================================
+// socket methods
 
 // sock:connect(host, port, [timeout]) -> boolean, err
 static int l_socket_connect(lua_State* L) {
@@ -214,9 +206,7 @@ static int l_socket_isconnected(lua_State* L) {
     return 1;
 }
 
-// ============================================================
-// TCP Server Methods
-// ============================================================
+// TCP server methods
 
 // sock:bind(port, [address]) -> boolean, err
 static int l_socket_bind(lua_State* L) {
@@ -278,9 +268,7 @@ static int l_socket_accept(lua_State* L) {
     return 1;
 }
 
-// ============================================================
-// UDP Methods
-// ============================================================
+// UDP methods
 
 // sock:sendto(data, host, port) -> number, err
 static int l_socket_sendto(lua_State* L) {
@@ -341,9 +329,43 @@ static int l_socket_receivefrom(lua_State* L) {
     return 3;
 }
 
-// ============================================================
-// DNS Functions
-// ============================================================
+// ICMP ping 
+
+// socket.ping(host, [timeout_ms]) -> result table or nil, err
+static int l_socket_ping(lua_State* L) {
+    const char* host = luaL_checkstring(L, 1);
+    uint32_t timeout = (uint32_t)luaL_optinteger(L, 2, 5000);
+
+    if (!wifi_is_initialized()) {
+        lua_pushnil(L);
+        lua_pushstring(L, "Wi-Fi not initialized");
+        return 2;
+    }
+
+    ping_result_t result;
+    int err = socket_ping(host, timeout, &result);
+
+    if (err != SOCKET_OK) {
+        lua_pushnil(L);
+        lua_pushstring(L, socket_strerror(err));
+        return 2;
+    }
+
+    // return result table
+    lua_newtable(L);
+    lua_pushboolean(L, result.success);
+    lua_setfield(L, -2, "success");
+    lua_pushinteger(L, result.time_ms);
+    lua_setfield(L, -2, "time");
+    lua_pushinteger(L, result.ttl);
+    lua_setfield(L, -2, "ttl");
+    lua_pushstring(L, result.ip);
+    lua_setfield(L, -2, "ip");
+
+    return 1;
+}
+
+// DNS resolver
 
 // socket.dns.resolve(hostname) -> ip, err
 static int l_socket_dns_resolve(lua_State* L) {
@@ -365,9 +387,7 @@ static int l_socket_dns_resolve(lua_State* L) {
     return 1;
 }
 
-// ============================================================
-// Socket Type Check
-// ============================================================
+// Socket type check
 
 // sock:type() -> string ("tcp" or "udp")
 static int l_socket_type(lua_State* L) {
@@ -380,10 +400,6 @@ static int l_socket_type(lua_State* L) {
     }
     return 1;
 }
-
-// ============================================================
-// Garbage Collection
-// ============================================================
 
 static int l_socket_gc(lua_State* L) {
     lua_socket_t* sock = tosocket(L, 1);
@@ -416,9 +432,7 @@ static int l_socket_tostring(lua_State* L) {
     return 1;
 }
 
-// ============================================================
-// TLS Socket Functions
-// ============================================================
+// TLS socket methods
 
 static lua_tls_socket_t* checktlssocket(lua_State* L, int index) {
     lua_tls_socket_t* sock = (lua_tls_socket_t*)luaL_checkudata(L, index, TLS_SOCKET_HANDLE);
@@ -586,11 +600,10 @@ static int l_tls_socket_tostring(lua_State* L) {
     return 1;
 }
 
-// ============================================================
-// Module Registration
-// ============================================================
+// module registration
 
 static const luaL_Reg tls_socket_methods[] = {
+    // TLS sockers
     {"connect", l_tls_socket_connect},
     {"send", l_tls_socket_send},
     {"receive", l_tls_socket_receive},
@@ -599,7 +612,6 @@ static const luaL_Reg tls_socket_methods[] = {
     {"available", l_tls_socket_available},
     {"isconnected", l_tls_socket_isconnected},
 
-    // Metamethods
     {"__gc", l_tls_socket_gc},
     {"__close", l_tls_socket_gc},
     {"__tostring", l_tls_socket_tostring},
@@ -608,7 +620,7 @@ static const luaL_Reg tls_socket_methods[] = {
 };
 
 static const luaL_Reg socket_methods[] = {
-    // Common
+    // TCP & UPD sockets
     {"connect", l_socket_connect},
     {"send", l_socket_send},
     {"receive", l_socket_receive},
@@ -627,7 +639,6 @@ static const luaL_Reg socket_methods[] = {
     {"sendto", l_socket_sendto},
     {"receivefrom", l_socket_receivefrom},
 
-    // Metamethods
     {"__gc", l_socket_gc},
     {"__close", l_socket_gc},
     {"__tostring", l_socket_tostring},
@@ -639,6 +650,7 @@ static const luaL_Reg socket_funcs[] = {
     {"tcp", l_socket_tcp},
     {"udp", l_socket_udp},
     {"tls", l_socket_tls},
+    {"ping", l_socket_ping},
     {NULL, NULL}
 };
 
@@ -648,32 +660,32 @@ static const luaL_Reg socket_dns_funcs[] = {
 };
 
 int luaopen_socket(lua_State* L) {
-    // Create the Socket metatable
+    // create the Socket metatable
     luaL_newmetatable(L, SOCKET_HANDLE);
     luaL_setfuncs(L, socket_methods, 0);
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
     lua_pop(L, 1);
 
-    // Create the TLSSocket metatable
+    // create the TLSSocket metatable
     luaL_newmetatable(L, TLS_SOCKET_HANDLE);
     luaL_setfuncs(L, tls_socket_methods, 0);
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
     lua_pop(L, 1);
 
-    // Create the socket module table
+    // create the socket module table
     luaL_newlib(L, socket_funcs);
 
-    // Add dns subtable
+    // add dns subtable
     luaL_newlib(L, socket_dns_funcs);
     lua_setfield(L, -2, "dns");
 
-    // Add constants
+    // add constants
     lua_pushintegerconstant(L, "TCP", SOCKET_TYPE_TCP);
     lua_pushintegerconstant(L, "UDP", SOCKET_TYPE_UDP);
 
-    // Add version string
+    // add version string
     lua_pushstring(L, SOCKET_VERSION);
     lua_setfield(L, -2, "_VERSION");
 

@@ -8,12 +8,13 @@
 --    return
 --end
 
---print("Available modules:")
+
+print("Available modules:")
 --f:writeLine("Available modules:")
---for name, module_table in pairs(package.loaded) do
---    print("--> " .. name)
---    f:writeLine("--> " .. name)
---end
+for name, module_table in pairs(package.loaded) do
+  print("--> " .. name)
+--  f:writeLine("--> " .. name)
+end
 --f:close()
 
 -- local batLvl,charging = sys.battery()
@@ -27,10 +28,12 @@
 --browser = loadfile("lua/browser.lua")
 --if browser then print("File browser available at: browser()") end
 
---term.write("Init Wifi? (y/n) ")
---if term.read() == "y" then
+--term.write("Init Wifi? [Y]/n: ")
+--if term.read() ~= "n" then
 --  dofile("lua/wifi-start.lua")
 --end
-
-dofile("shell.lua")
+term.write("Start command shell? [Y]/n: ")
+if term.read() ~= "n" then
+  dofile("shell.lua")
+end
 

@@ -1,6 +1,6 @@
 /*
  * Socket driver implementation for PicoCalc
- * Uses raw lwIP API for TCP/UDP communication (NO_SYS=1 compatible)
+ * Uses lwIP API for TCP/UDP
  */
 #include "socket.h"
 #include "wifi.h"
@@ -13,11 +13,14 @@
 #include "lwip/dns.h"
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
+#include "lwip/raw.h"
+#include "lwip/icmp.h"
+#include "lwip/inet_chksum.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-// Helper to copy data into circular buffer
+// func to copy data into circular buffer
 static size_t recv_buf_write(socket_handle_t* sock, const uint8_t* data, size_t len) {
     size_t written = 0;
     while (written < len && sock->recv_len < SOCKET_RECV_BUF_SIZE) {
@@ -29,7 +32,7 @@ static size_t recv_buf_write(socket_handle_t* sock, const uint8_t* data, size_t 
     return written;
 }
 
-// Helper to read data from circular buffer
+// func to read data from circular buffer
 static size_t recv_buf_read(socket_handle_t* sock, uint8_t* data, size_t maxlen) {
     size_t read = 0;
     while (read < maxlen && sock->recv_len > 0) {
@@ -46,7 +49,7 @@ static err_t tcp_recv_callback(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, 
     socket_handle_t* sock = (socket_handle_t*)arg;
 
     if (p == NULL) {
-        // Connection closed by remote
+        // connection closed by remote
         sock->connected = false;
         sock->last_error = SOCKET_ERR_CLOSED;
         return ERR_OK;
@@ -58,20 +61,20 @@ static err_t tcp_recv_callback(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, 
         return err;
     }
 
-    // Copy data to receive buffer
+    // copy data to receive buffer
     struct pbuf* q = p;
     size_t total_copied = 0;
     while (q != NULL) {
         size_t copied = recv_buf_write(sock, (uint8_t*)q->payload, q->len);
         total_copied += copied;
         if (copied < q->len) {
-            // Buffer full, can't accept more
+            // buffer full, can't accept more
             break;
         }
         q = q->next;
     }
 
-    // Acknowledge received data
+    // ack received data
     tcp_recved(tpcb, total_copied);
     pbuf_free(p);
 
@@ -126,7 +129,7 @@ static err_t tcp_accept_callback(void* arg, struct tcp_pcb* newpcb, err_t err) {
         return ERR_VAL;
     }
 
-    // Create new socket handle for accepted connection
+    // create new socket handle for accepted connection
     socket_handle_t* client = calloc(1, sizeof(socket_handle_t));
     if (client == NULL) {
         tcp_abort(newpcb);
@@ -147,12 +150,12 @@ static err_t tcp_accept_callback(void* arg, struct tcp_pcb* newpcb, err_t err) {
     client->accept_queue = NULL;
     client->next_pending = NULL;
 
-    // Set up callbacks for new connection
+    // set up callbacks for new connection
     tcp_arg(newpcb, client);
     tcp_recv(newpcb, tcp_recv_callback);
     tcp_err(newpcb, tcp_err_callback);
 
-    // Add to accept queue
+    // add to accept queue
     client->next_pending = listen_sock->accept_queue;
     listen_sock->accept_queue = client;
 
@@ -168,11 +171,11 @@ static void udp_recv_callback(void* arg, struct udp_pcb* upcb, struct pbuf* p,
         return;
     }
 
-    // Store sender info
+    // store sender info
     sock->last_recv_ip = ip4_addr_get_u32(ip_2_ip4(addr));
     sock->last_recv_port = port;
 
-    // Copy data to receive buffer
+    // copy data to receive buffer
     struct pbuf* q = p;
     while (q != NULL) {
         recv_buf_write(sock, (uint8_t*)q->payload, q->len);
@@ -214,7 +217,7 @@ socket_handle_t* socket_tcp_create(void) {
     sock->accept_queue = NULL;
     sock->next_pending = NULL;
 
-    // Set callbacks
+    // tcp callbacks
     cyw43_arch_lwip_begin();
     tcp_arg(sock->pcb.tcp, sock);
     tcp_recv(sock->pcb.tcp, tcp_recv_callback);
@@ -258,7 +261,7 @@ socket_handle_t* socket_udp_create(void) {
     sock->accept_queue = NULL;
     sock->next_pending = NULL;
 
-    // Set callback
+    // udp callback
     cyw43_arch_lwip_begin();
     udp_recv(sock->pcb.udp, udp_recv_callback, sock);
     cyw43_arch_lwip_end();
@@ -274,7 +277,7 @@ void socket_close(socket_handle_t* sock) {
     cyw43_arch_lwip_begin();
 
     if (sock->type == SOCKET_TYPE_TCP) {
-        // Clean up accept queue for listening sockets
+        // clean up accept queue for listening sockets
         while (sock->accept_queue != NULL) {
             socket_handle_t* pending = sock->accept_queue;
             sock->accept_queue = pending->next_pending;
@@ -319,15 +322,15 @@ int socket_connect(socket_handle_t* sock, const char* host, uint16_t port, uint3
         return SOCKET_ERR_FAILED;
     }
 
-    // Resolve hostname
+    // resolve hostname
     char ip_str[16];
     ip_addr_t addr;
 
-    // Check if already an IP address
+    // check if already an IP address
     if (ip4addr_aton(host, ip_2_ip4(&addr))) {
-        // Valid IP address
+        // valid IP 
     } else {
-        // Try DNS resolution
+        // otherwise try to resolve as a hostname
         int err = socket_dns_resolve(host, ip_str, sizeof(ip_str));
         if (err != SOCKET_OK) {
             return err;
@@ -335,11 +338,11 @@ int socket_connect(socket_handle_t* sock, const char* host, uint16_t port, uint3
         ip4addr_aton(ip_str, ip_2_ip4(&addr));
     }
 
-    // Reset operation state
+    // reset operation state
     sock->op_complete = false;
     sock->last_error = SOCKET_OK;
 
-    // Initiate connection
+    // initiate connection
     cyw43_arch_lwip_begin();
     err_t err = tcp_connect(sock->pcb.tcp, &addr, port, tcp_connected_callback);
     cyw43_arch_lwip_end();
@@ -348,16 +351,16 @@ int socket_connect(socket_handle_t* sock, const char* host, uint16_t port, uint3
         return SOCKET_ERR_FAILED;
     }
 
-    // Wait for connection with timeout
+    // wait for connection with timeout
     uint32_t start = to_ms_since_boot(get_absolute_time());
-    uint32_t effective_timeout = timeout_ms > 0 ? timeout_ms : 30000;  // Default 30s
+    uint32_t effective_timeout = timeout_ms > 0 ? timeout_ms : 30000;  // default 30s
 
     while (!sock->op_complete) {
         cyw43_arch_poll();
         sleep_ms(1);
 
         if (to_ms_since_boot(get_absolute_time()) - start > effective_timeout) {
-            // Timeout - abort connection attempt
+            // timeout - abort connection attempt
             cyw43_arch_lwip_begin();
             tcp_abort(sock->pcb.tcp);
             sock->pcb.tcp = NULL;
@@ -384,20 +387,20 @@ int socket_send(socket_handle_t* sock, const void* data, size_t len) {
 
     cyw43_arch_lwip_begin();
 
-    // Check available send buffer
+    // check available send buffer
     u16_t available = tcp_sndbuf(sock->pcb.tcp);
     if (available == 0) {
         cyw43_arch_lwip_end();
         return SOCKET_ERR_WOULDBLOCK;
     }
 
-    // Limit to available buffer
+    // limit to available buffer
     size_t to_send = len;
     if (to_send > available) {
         to_send = available;
     }
 
-    // Write data
+    // write data
     err_t err = tcp_write(sock->pcb.tcp, data, to_send, TCP_WRITE_FLAG_COPY);
     if (err != ERR_OK) {
         cyw43_arch_lwip_end();
@@ -407,7 +410,7 @@ int socket_send(socket_handle_t* sock, const void* data, size_t len) {
         return SOCKET_ERR_FAILED;
     }
 
-    // Flush output
+    // flush output
     err = tcp_output(sock->pcb.tcp);
     cyw43_arch_lwip_end();
 
@@ -434,10 +437,10 @@ int socket_receive(socket_handle_t* sock, void* buf, size_t maxlen, uint32_t tim
     uint32_t start = to_ms_since_boot(get_absolute_time());
     uint32_t effective_timeout = timeout_ms > 0 ? timeout_ms : sock->timeout_ms;
 
-    // Wait for data
+    // wait for data
     while (sock->recv_len == 0) {
         if (!sock->connected) {
-            // Check if there was an error
+            // check for error
             if (sock->last_error != SOCKET_OK) {
                 return sock->last_error;
             }
@@ -454,7 +457,7 @@ int socket_receive(socket_handle_t* sock, void* buf, size_t maxlen, uint32_t tim
         }
     }
 
-    // Read from buffer
+    // read from buffer
     size_t read = recv_buf_read(sock, (uint8_t*)buf, maxlen);
     return (int)read;
 }
@@ -550,7 +553,7 @@ socket_handle_t* socket_accept(socket_handle_t* sock, uint32_t timeout_ms) {
     uint32_t start = to_ms_since_boot(get_absolute_time());
     uint32_t effective_timeout = timeout_ms > 0 ? timeout_ms : sock->timeout_ms;
 
-    // Wait for connection
+    // wait for connection
     while (sock->accept_queue == NULL) {
         cyw43_arch_poll();
         sleep_ms(1);
@@ -562,7 +565,7 @@ socket_handle_t* socket_accept(socket_handle_t* sock, uint32_t timeout_ms) {
         }
     }
 
-    // Pop from accept queue
+    // pop from accept queue
     cyw43_arch_lwip_begin();
     socket_handle_t* client = sock->accept_queue;
     sock->accept_queue = client->next_pending;
@@ -586,13 +589,14 @@ int socket_sendto(socket_handle_t* sock, const void* data, size_t len,
         return SOCKET_ERR_FAILED;
     }
 
-    // Resolve hostname
+    // resolve hostname
     char ip_str[16];
     ip_addr_t addr;
 
     if (ip4addr_aton(host, ip_2_ip4(&addr))) {
-        // Valid IP
+        // valid IP
     } else {
+	// try to resolve as a hostname
         int err = socket_dns_resolve(host, ip_str, sizeof(ip_str));
         if (err != SOCKET_OK) {
             return err;
@@ -600,7 +604,7 @@ int socket_sendto(socket_handle_t* sock, const void* data, size_t len,
         ip4addr_aton(ip_str, ip_2_ip4(&addr));
     }
 
-    // Create pbuf
+    // create pbuf
     cyw43_arch_lwip_begin();
 
     struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
@@ -623,9 +627,7 @@ int socket_sendto(socket_handle_t* sock, const void* data, size_t len,
     return (int)len;
 }
 
-int socket_receivefrom(socket_handle_t* sock, void* buf, size_t maxlen,
-                       char* from_ip, size_t from_ip_len, uint16_t* from_port,
-                       uint32_t timeout_ms) {
+int socket_receivefrom(socket_handle_t* sock, void* buf, size_t maxlen, char* from_ip, size_t from_ip_len, uint16_t* from_port, uint32_t timeout_ms) {
     if (sock == NULL || buf == NULL) {
         return SOCKET_ERR_INVAL;
     }
@@ -637,7 +639,7 @@ int socket_receivefrom(socket_handle_t* sock, void* buf, size_t maxlen,
     uint32_t start = to_ms_since_boot(get_absolute_time());
     uint32_t effective_timeout = timeout_ms > 0 ? timeout_ms : sock->timeout_ms;
 
-    // Wait for data
+    // wait for data
     while (sock->recv_len == 0) {
         cyw43_arch_poll();
         sleep_ms(1);
@@ -649,10 +651,10 @@ int socket_receivefrom(socket_handle_t* sock, void* buf, size_t maxlen,
         }
     }
 
-    // Read from buffer
+    // read from buffer
     size_t read = recv_buf_read(sock, (uint8_t*)buf, maxlen);
 
-    // Return sender info
+    // return sender info
     if (from_ip != NULL && from_ip_len > 0) {
         ip_addr_t addr;
         ip4_addr_set_u32(ip_2_ip4(&addr), sock->last_recv_ip);
@@ -702,7 +704,7 @@ int socket_dns_resolve(const char* hostname, char* ip_out, size_t ip_len) {
         return SOCKET_ERR_FAILED;
     }
 
-    // Check if already an IP address
+    // check if already an IP address
     ip_addr_t addr;
     if (ip4addr_aton(hostname, ip_2_ip4(&addr))) {
         strncpy(ip_out, hostname, ip_len - 1);
@@ -723,13 +725,13 @@ int socket_dns_resolve(const char* hostname, char* ip_out, size_t ip_len) {
     cyw43_arch_lwip_end();
 
     if (err == ERR_OK) {
-        // Result was cached
+        // result was cached
         const char* addr_str = ip4addr_ntoa(ip_2_ip4(&cached_addr));
         strncpy(ip_out, addr_str, ip_len - 1);
         ip_out[ip_len - 1] = '\0';
         return SOCKET_OK;
     } else if (err == ERR_INPROGRESS) {
-        // Wait for callback with timeout
+        // wait for callback with timeout
         uint32_t start = to_ms_since_boot(get_absolute_time());
         while (!state.done) {
             cyw43_arch_poll();
@@ -777,4 +779,183 @@ const char* socket_strerror(int err) {
         case SOCKET_ERR_WOULDBLOCK: return "would block";
         default:                  return "unknown error";
     }
+}
+
+// ICMP ping implementation
+
+// ICMP echo request/reply type codes
+#define ICMP_ECHO_REQUEST   8
+#define ICMP_ECHO_REPLY     0
+
+// ping state for async callback
+typedef struct {
+    volatile bool done;
+    volatile bool success;
+    uint32_t start_time;
+    uint32_t time_ms;
+    int ttl;
+    uint16_t seq;
+    uint16_t id;
+} ping_state_t;
+
+// ICMP receive callback - called when any ICMP packet is received
+static uint8_t ping_recv_callback(void* arg, struct raw_pcb* pcb,
+                                   struct pbuf* p, const ip_addr_t* addr) {
+    ping_state_t* state = (ping_state_t*)arg;
+
+    if (p == NULL || state->done) {
+        return 0;  // don't consume packet
+    }
+
+    // check if packet is large enough for IP + ICMP headers
+    if (p->tot_len < sizeof(struct ip_hdr) + sizeof(struct icmp_echo_hdr)) {
+        return 0;
+    }
+
+    // get IP header to extract TTL
+    struct ip_hdr* iphdr = (struct ip_hdr*)p->payload;
+    int ttl = IPH_TTL(iphdr);
+
+    // skip IP header to get to ICMP
+    uint16_t ip_hdr_len = IPH_HL(iphdr) * 4;
+    if (p->tot_len < ip_hdr_len + sizeof(struct icmp_echo_hdr)) {
+        return 0;
+    }
+
+    // get ICMP header
+    struct icmp_echo_hdr* icmphdr = (struct icmp_echo_hdr*)((uint8_t*)p->payload + ip_hdr_len);
+
+    // check if this is an echo reply matching our request
+    if (icmphdr->type == ICMP_ECHO_REPLY &&
+        icmphdr->id == state->id &&
+        icmphdr->seqno == state->seq) {
+
+        state->time_ms = to_ms_since_boot(get_absolute_time()) - state->start_time;
+        state->ttl = ttl;
+        state->success = true;
+        state->done = true;
+
+        return 1;  // consume the packet
+    }
+
+    return 0;  // not our packet, don't consume
+}
+
+int socket_ping(const char* host, uint32_t timeout_ms, ping_result_t* result) {
+    if (host == NULL || result == NULL) {
+        return SOCKET_ERR_INVAL;
+    }
+
+    if (!wifi_is_initialized()) {
+        return SOCKET_ERR_FAILED;
+    }
+
+    // initialize result
+    memset(result, 0, sizeof(ping_result_t));
+
+    // resolve hostname
+    ip_addr_t dest_addr;
+    if (ip4addr_aton(host, ip_2_ip4(&dest_addr))) {
+        // valid IP address, copy to result
+        strncpy(result->ip, host, sizeof(result->ip) - 1);
+    } else {
+        // if not an IP, try to resolve hostname
+        char ip_str[16];
+        int err = socket_dns_resolve(host, ip_str, sizeof(ip_str));
+        if (err != SOCKET_OK) {
+            return err;
+        }
+        ip4addr_aton(ip_str, ip_2_ip4(&dest_addr));
+        strncpy(result->ip, ip_str, sizeof(result->ip) - 1);
+    }
+
+    // set up ping state
+    static uint16_t ping_seq = 0;
+    ping_state_t state = {
+        .done = false,
+        .success = false,
+        .start_time = 0,
+        .time_ms = 0,
+        .ttl = 0,
+        .seq = PP_HTONS(ping_seq++),
+        .id = PP_HTONS(0x31337)  // arbitrary identifier
+    };
+
+    // create raw PCB for ICMP
+    cyw43_arch_lwip_begin();
+
+    struct raw_pcb* pcb = raw_new(IP_PROTO_ICMP);
+    if (pcb == NULL) {
+        cyw43_arch_lwip_end();
+        return SOCKET_ERR_NOMEM;
+    }
+
+    // set receive callback
+    raw_recv(pcb, ping_recv_callback, &state);
+
+    // bind to any local address
+    raw_bind(pcb, IP_ADDR_ANY);
+
+    // allocate pbuf for ICMP echo request
+    struct pbuf* p = pbuf_alloc(PBUF_IP, sizeof(struct icmp_echo_hdr), PBUF_RAM);
+    if (p == NULL) {
+        raw_remove(pcb);
+        cyw43_arch_lwip_end();
+        return SOCKET_ERR_NOMEM;
+    }
+
+    // fill in ICMP echo request header
+    struct icmp_echo_hdr* icmphdr = (struct icmp_echo_hdr*)p->payload;
+    icmphdr->type = ICMP_ECHO_REQUEST;
+    icmphdr->code = 0;
+    icmphdr->chksum = 0;
+    icmphdr->id = state.id;
+    icmphdr->seqno = state.seq;
+
+    // calculate checksum
+    icmphdr->chksum = inet_chksum(icmphdr, sizeof(struct icmp_echo_hdr));
+
+    // record start time and send
+    state.start_time = to_ms_since_boot(get_absolute_time());
+
+    err_t err = raw_sendto(pcb, p, &dest_addr);
+    pbuf_free(p);
+
+    if (err != ERR_OK) {
+        raw_remove(pcb);
+        cyw43_arch_lwip_end();
+        return SOCKET_ERR_FAILED;
+    }
+
+    cyw43_arch_lwip_end();
+
+    // wait for reply with timeout (5 sec)
+    uint32_t effective_timeout = timeout_ms > 0 ? timeout_ms : 5000;
+
+    while (!state.done) {
+        cyw43_arch_poll();
+        sleep_ms(1);
+
+        if (to_ms_since_boot(get_absolute_time()) - state.start_time > effective_timeout) {
+            // timeout
+            cyw43_arch_lwip_begin();
+            raw_remove(pcb);
+            cyw43_arch_lwip_end();
+
+            result->success = false;
+            return SOCKET_ERR_TIMEOUT;
+        }
+    }
+
+    // cleanup
+    cyw43_arch_lwip_begin();
+    raw_remove(pcb);
+    cyw43_arch_lwip_end();
+
+    // fill result
+    result->success = state.success;
+    result->time_ms = state.time_ms;
+    result->ttl = state.ttl;
+
+    return SOCKET_OK;
 }

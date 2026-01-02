@@ -1,6 +1,6 @@
 /*
  * Wi-Fi driver implementation for PicoCalc
- * Wraps the CYW43 driver for Pico W boards
+ * wraps the cyw43 driver for Pico W boards
  */
 #include "wifi.h"
 
@@ -10,16 +10,16 @@
 #include <string.h>
 #include <stdlib.h>
 
-// State tracking
+// state tracking
 static bool wifi_initialized = false;
 static wifi_scan_result_t* scan_results = NULL;
 static int scan_count = 0;
 static volatile bool scan_in_progress = false;
 
-// Maximum number of scan results to store
+// max number of scan results to store
 #define MAX_SCAN_RESULTS 64
 
-// Scan callback for cyw43
+// scan callback for cyw43
 static int wifi_scan_callback(void *env, const cyw43_ev_scan_result_t *result) {
     (void)env;
 
@@ -31,16 +31,16 @@ static int wifi_scan_callback(void *env, const cyw43_ev_scan_result_t *result) {
         return 0;
     }
 
-    // Skip empty SSIDs
+    // skip empty SSIDs
     if (result->ssid_len == 0) {
         return 0;
     }
 
-    // Check for duplicate SSIDs (keep the one with stronger signal)
+    // check for duplicate SSIDs (keep the one with stronger signal)
     for (int i = 0; i < scan_count; i++) {
         if (strncmp(scan_results[i].ssid, (const char*)result->ssid, result->ssid_len) == 0 &&
             scan_results[i].ssid[result->ssid_len] == '\0') {
-            // Duplicate found - update if this one has stronger signal
+            // dupe found - update if this one has stronger signal
             if (result->rssi > scan_results[i].rssi) {
                 scan_results[i].rssi = result->rssi;
                 scan_results[i].channel = result->channel;
@@ -51,24 +51,24 @@ static int wifi_scan_callback(void *env, const cyw43_ev_scan_result_t *result) {
         }
     }
 
-    // Allocate or expand results array
+    // allocate/expand results array
     wifi_scan_result_t* new_results = realloc(scan_results, (scan_count + 1) * sizeof(wifi_scan_result_t));
     if (new_results == NULL) {
         return 0;
     }
     scan_results = new_results;
 
-    // Store the result
+    // store result
     wifi_scan_result_t* r = &scan_results[scan_count];
     memset(r, 0, sizeof(wifi_scan_result_t));
 
-    // Copy SSID (ensure null termination)
+    // copy SSID
     size_t ssid_len = result->ssid_len;
     if (ssid_len > 32) ssid_len = 32;
     memcpy(r->ssid, result->ssid, ssid_len);
     r->ssid[ssid_len] = '\0';
 
-    // Copy other fields
+    // copy other fields
     memcpy(r->bssid, result->bssid, 6);
     r->rssi = result->rssi;
     r->channel = result->channel;
@@ -101,7 +101,7 @@ bool wifi_init_with_country(const char* country) {
         return wifi_init();
     }
 
-    // Convert country string to CYW43 country code
+    // convert country string to cyw43 country code
     uint32_t country_code = CYW43_COUNTRY(country[0], country[1], 0);
 
     if (cyw43_arch_init_with_country(country_code) != 0) {
@@ -133,12 +133,12 @@ int wifi_scan_start(void) {
         return -1;
     }
 
-    // Free any previous results
+    // free any previous results
     wifi_scan_free();
 
     scan_in_progress = true;
 
-    // Start the scan
+    // start scan
     cyw43_wifi_scan_options_t scan_options = {0};
     int err = cyw43_wifi_scan(&cyw43_state, &scan_options, NULL, wifi_scan_callback);
     if (err != 0) {
@@ -146,7 +146,7 @@ int wifi_scan_start(void) {
         return err;
     }
 
-    // Block until scan completes 
+    // block until scan completes 
     while (cyw43_wifi_scan_active(&cyw43_state)) {
         cyw43_arch_poll();
         sleep_ms(10);
@@ -184,7 +184,7 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
         return -1;
     }
 
-    // Map our auth enum to CYW43 auth type
+    // map our auth enum to cyw43 auth type
     uint32_t cyw_auth;
     switch (auth) {
         case WIFI_AUTH_OPEN:
@@ -201,10 +201,10 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
             break;
     }
 
-    // Handle NULL or empty password for open networks
+    // handle null/empty password for open networks
     const char* pw = (password != NULL) ? password : "";
 
-    // Use timeout version if specified, otherwise blocking
+    // use timeout if specified, otherwise blocking
     int result;
     if (timeout_ms > 0) {
         result = cyw43_arch_wifi_connect_timeout_ms(ssid, pw, cyw_auth, timeout_ms);

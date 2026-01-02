@@ -1,18 +1,17 @@
 /*
- * lwIP options configuration for PicoCalc Wi-Fi
+ * lwIP options for picocalc_lua wi-fi
  */
 #ifndef _LWIPOPTS_H
 #define _LWIPOPTS_H
 
-// Common settings for pico_cyw43_arch (bare-metal, no OS)
+// common settings for pico_cyw43_arch (bare-metal, no OS)
 #define NO_SYS                      1
 #define LWIP_SOCKET                 0
 #define LWIP_NETCONN                0
 
-// Avoid struct timeval redefinition with newlib
 #define LWIP_TIMEVAL_PRIVATE        0
 
-// Memory configuration
+// memory configuration
 #define MEM_LIBC_MALLOC             0
 #define MEM_ALIGNMENT               4
 #define MEM_SIZE                    8192
@@ -20,7 +19,7 @@
 #define MEMP_NUM_ARP_QUEUE          10
 #define PBUF_POOL_SIZE              24
 
-// Raw API PCB pools
+// raw API PCB pools
 #define MEMP_NUM_TCP_PCB            8
 #define MEMP_NUM_TCP_PCB_LISTEN     4
 #define MEMP_NUM_UDP_PCB            8
@@ -56,17 +55,18 @@
 #define LWIP_ALTCP_TLS              1
 #define LWIP_ALTCP_TLS_MBEDTLS      1
 
-// TLS configuration - disable certificate verification (0 = MBEDTLS_SSL_VERIFY_NONE)
+// TLS config- disable certificate verification 
+// (0 = MBEDTLS_SSL_VERIFY_NONE)
 #define ALTCP_MBEDTLS_AUTHMODE      0
 
 // ALTCP PCB pool
 #define MEMP_NUM_ALTCP_PCB          4
 
-// Disable stats to save memory
+// disable stats to save memory
 #define LWIP_STATS                  0
 #define LWIP_STATS_DISPLAY          0
 
-// Don't allow netif state to be changed from lwIP thread
+// don't allow netif state to be changed from lwIP thread
 #define LWIP_NETIF_EXT_STATUS_CALLBACK 1
 
 #ifndef NDEBUG

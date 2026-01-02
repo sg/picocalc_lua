@@ -1,123 +1,124 @@
 --[[
-    wifi-start.lua
-    Scan for Wi-Fi networks and connect to one selected by the user.
+
+  wifi-start.lua
+  Scan for Wi-Fi networks and connect to one selected by the user
 ]]
 
--- Check if already connected
+-- check if already connected
 if wifi.isInitialized() and wifi.isConnected() then
-    local info = wifi.getInfo()
-    print("Already connected to Wi-Fi")
-    if info then
-        print("IP: " .. info.ip)
-    end
-    return
+  local info = wifi.getInfo()
+  print("Already connected to Wi-Fi")
+  if info then
+    print("IP: " .. info.ip)
+  end
+  return
 end
 
--- Initialize Wi-Fi if needed
+-- init wi-fi if needed
 if not wifi.isInitialized() then
-    print("Initializing Wi-Fi...")
-    if not wifi.init("US") then
-        print("Failed to initialize Wi-Fi")
-        return
-    end
+  print("Initializing Wi-Fi...")
+  if not wifi.init("US") then
+    print("Failed to initialize Wi-Fi")
+    return
+  end
 end
 
--- Scan for networks
+-- scan for ssids
 print("Scanning for networks...")
 local networks, err = wifi.scan()
 
 if not networks then
-    print("Scan failed: " .. (err or "unknown error"))
-    return
+  print("Scan failed: " .. (err or "unknown error"))
+  return
 end
 
 if #networks == 0 then
-    print("No networks found")
-    return
+  print("No networks found")
+  return
 end
 
--- Sort by signal strength (strongest first)
+-- sort by signal strength
 table.sort(networks, function(a, b)
-    return a.rssi > b.rssi
+  return a.rssi > b.rssi
 end)
 
--- Display networks
+-- display networks
 print("\nAvailable networks:")
 print("-------------------")
 for i, net in ipairs(networks) do
-    local security = net.secure and "*" or " "
-    local signal = ""
-    if net.rssi >= -50 then
-        signal = "[====]"
-    elseif net.rssi >= -60 then
-        signal = "[=== ]"
-    elseif net.rssi >= -70 then
-        signal = "[==  ]"
-    elseif net.rssi >= -80 then
-        signal = "[=   ]"
-    else
-        signal = "[    ]"
-    end
-    print(string.format("%2d. %s %s %s", i, security, signal, net.ssid))
+  local security = net.secure and "*" or " "
+  local signal = ""
+  if net.rssi >= -50 then
+    signal = "[====]"
+  elseif net.rssi >= -60 then
+    signal = "[=== ]"
+  elseif net.rssi >= -70 then
+    signal = "[==  ]"
+  elseif net.rssi >= -80 then
+    signal = "[=   ]"
+  else
+    signal = "[    ]"
+  end
+  print(string.format("%2d. %s %s %s", i, security, signal, net.ssid))
 end
 print("\n* = secured network")
 
--- Prompt for selection
+-- select a network
 print("")
 local selection = term.read("Enter number (1-" .. #networks .. "): ")
 local idx = tonumber(selection)
 
 if not idx or idx < 1 or idx > #networks then
-    print("Invalid selection")
-    return
+  print("Invalid selection")
+  return
 end
 
 local selected = networks[idx]
 print("\nConnecting to: " .. selected.ssid)
 
--- Get password if network is secured
+-- get password if network is secured
 local password = ""
 if selected.secure then
-    password = term.read("Password: ")
-    if not password or password == "" then
-        print("Password required for secured network")
-        return
-    end
+  password = term.read("Password: ")
+  if not password or password == "" then
+    print("Password required for secured network")
+    return
+  end
 end
 
--- Determine auth mode
+-- set auth mode to WPA2 for now
 local auth = wifi.AUTH_OPEN
 if selected.secure then
-    auth = wifi.AUTH_WPA2  -- Default to WPA2 for secured networks
+  auth = wifi.AUTH_WPA2  
 end
 
--- Connect
+-- connect
 print("Connecting...")
 local ok, conn_err = wifi.connect(selected.ssid, password, auth, 30000)
 
 if not ok then
-    print("Connection failed: " .. (conn_err or "unknown error"))
-    return
+  print("Connection failed: " .. (conn_err or "unknown error"))
+  return
 end
 
--- Wait a moment for DHCP
+-- wait for DHCP to assign IP
 print("Waiting for IP address...")
-local timeout = 10  -- seconds
+local timeout = 10 -- seconds
 local start = os.clock()
 while not wifi.isConnected() and (os.clock() - start) < timeout do
-    -- Small delay
-    for i = 1, 1000 do end
+  -- delay
+  for i = 1, 1000 do end
 end
 
--- Display connection info
+-- display connection info
 if wifi.isConnected() then
-    local info = wifi.getInfo()
-    print("\nConnected successfully!")
-    if info then
-        print("IP Address: " .. info.ip)
-        print("Gateway:    " .. info.gateway)
-        print("Netmask:    " .. info.netmask)
-    end
+  local info = wifi.getInfo()
+  print("\nConnected successfully!")
+  if info then
+    print("IP Address: " .. info.ip)
+    --print("Gateway:    " .. info.gateway)
+    --print("Netmask:    " .. info.netmask)
+  end
 else
-    print("\nConnection timed out waiting for IP")
+  print("\nConnection timed out waiting for IP")
 end

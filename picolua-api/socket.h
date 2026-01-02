@@ -1,5 +1,5 @@
 /*
- * Socket Lua bindings for PicoCalc
+ * Socket bindings for picocalc_lua
  */
 #pragma once
 

@@ -40,7 +40,7 @@ int main() {
 			atomic_store(&fs_needs_remount, false);
 		}
 
-		// Process Wi-Fi background tasks
+		// process wi-fi background tasks
 		wifi_poll();
 
 		#if PICO_RP2040

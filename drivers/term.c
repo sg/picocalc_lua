@@ -187,7 +187,8 @@ int term_get_x() {
 	return ansi.x;
 }
 int term_get_y() {
-	return ansi.y;
+	// Return viewport-relative Y (subtract scroll offset)
+	return ansi.y - ansi.scroll;
 }
 
 int term_get_width() {
@@ -202,7 +203,8 @@ void term_set_pos(int x, int y) {
 	ansi.cursor_manual = true;
 	erase_cursor();
 	if (x >= 0 && x < font.term_width) ansi.x = x;
-	if (y >= 0 && y < font.term_height) ansi.y = y;
+	// Convert viewport-relative Y to absolute Y (add scroll offset)
+	if (y >= 0 && y < font.term_height) ansi.y = y + ansi.scroll;
 	draw_cursor();
 }
 
