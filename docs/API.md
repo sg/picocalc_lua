@@ -1179,8 +1179,8 @@ Send an ICMP echo request packet to host
 **Returns**
 1. `table | nil` - A table holding the ping state fields, or nil if socket creation failed
    * `success : bool` - if a reply was recieved
-   * `time : int` - milliseconds elapsed
-   * `ttl : int` - time to live
+   * `time : number` - milliseconds elapsed
+   * `ttl : number` - time to live
    * `ip : string` - IP of host (after successful dns lookup)
 2. `string` - Error message if socket creation failed
 
