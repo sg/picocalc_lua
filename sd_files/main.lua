@@ -1,31 +1,18 @@
 --------------------------------------------
 -- main.lua - startup file for picocalc_lua
 --------------------------------------------
--- open a file to write output to
---local f = fs.open("lua-out.txt", "w+")
---if f == nil then
---    print("filehandle couldn't be opened")
---    return
---end
 
-
+term.setTextColor(colors.lime)
 print("Available modules:")
---f:writeLine("Available modules:")
+term.setTextColor(colors.lightBlue)
 for name, module_table in pairs(package.loaded) do
-  print("--> " .. name)
---  f:writeLine("--> " .. name)
+  --print("--> " .. name)
+  term.write(name.." ")
 end
---f:close()
+term.setTextColor(colors.white)
+term.write("\n\n")
 
--- local batLvl,charging = sys.battery()
--- print("Battery:" .. batLvl)
--- if charging then
---   print("Charging: true")
--- else
---   print("Charging: false")
--- end
-
---browser = loadfile("lua/browser.lua")
+browser = loadfile("lua/browser.lua")
 --if browser then print("File browser available at: browser()") end
 
 --term.write("Init Wifi? [Y]/n: ")

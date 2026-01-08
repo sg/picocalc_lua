@@ -1,14 +1,15 @@
 --[[
 
   HTTP client library for picocalc_lua
-  A Lua HTTP/S client built on top of the socket module
-  HTTPS is via TLS sockets. It doesnt require a valid cert,
-  but at least the connection won't be in the clear :D
+  A Lua HTTP/S client built on top of the socket
+  module HTTPS is via TLS sockets. It doesnt require
+  a valid cert,but at least the connection won't be
+  in the clear ;)
 
 ]]
 
 local http = {}
---http._VERSION = "1.0"
+http._VERSION = "1.0"
 
 -- default settings
 http.TIMEOUT = 30 -- seconds

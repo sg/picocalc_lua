@@ -9,10 +9,23 @@
     nc -h               Show help
 ]]
 
+-- ANSI color codes
+local c = {
+  black   = "\27[90m",
+  red     = "\27[91m",
+  green   = "\27[92m",
+  yellow  = "\27[93m",
+  blue    = "\27[94m",
+  magenta = "\27[95m",
+  cyan    = "\27[96m",
+  white   = "\27[97m",
+  reset   = "\27[0m",
+}
+
 return {
   name = "nc",
   aliases = {"netcat"},
-  help = "'nc [-l] [-u] <host> <port>' - netcat network utility",
+  help = c.cyan.."nc"..c.yellow.." [-l] [-u] <host> <port>"..c.white.." - netcat network utility",
   run = function(args, sh)
     -- load the nc module
     local ok, nc = pcall(require, "lua/shell/modules/nc")

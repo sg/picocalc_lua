@@ -4,10 +4,23 @@
 
 ]]
 
+-- ANSI color codes
+local c = {
+  black   = "\27[90m",
+  red     = "\27[91m",
+  green   = "\27[92m",
+  yellow  = "\27[93m",
+  blue    = "\27[94m",
+  magenta = "\27[95m",
+  cyan    = "\27[96m",
+  white   = "\27[97m",
+  reset   = "\27[0m",
+}
+
 return {
   name = "wifi",
   aliases = {"wf","wlan"},
-  help = "'wifi [status|on|off|scan]' - manage Wi-Fi connection",
+  help = c.cyan.."wifi"..c.yellow.." [status|on|off|scan]"..c.white.." - manage Wi-Fi connection",
   run = function(args, sh)
     local action = args[1] or "status"
 

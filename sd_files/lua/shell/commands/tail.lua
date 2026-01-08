@@ -2,9 +2,22 @@
   tail.lua - display the last few lines of a file
 ]]
 
+-- ANSI color codes
+local c = {
+  black   = "\27[90m",
+  red     = "\27[91m",
+  green   = "\27[92m",
+  yellow  = "\27[93m",
+  blue    = "\27[94m",
+  magenta = "\27[95m",
+  cyan    = "\27[96m",
+  white   = "\27[97m",
+  reset   = "\27[0m",
+}
+
 return {
   name = "tail",
-  help = "'tail <file> [n]' - display last n lines (default 10)",
+  help = c.cyan.."tail"..c.yellow.." <file> [n]"..c.white.." - print last n lines (default 10)",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: tail <file> [num_lines]")

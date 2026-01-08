@@ -42,9 +42,9 @@ local shell = {
   -- configuration
   config = {
     external_cmd_path = "/lua/shell/commands",
-    prompt_format = "shell",
+    prompt_format = "> ",
     load_external = true,
-    history_file = ".shell_history",
+    history_file = "/lua/shell/.shell_history",
     max_history = 100,
   },
 }
@@ -209,10 +209,18 @@ function shell:print_dir(entries)
 
   for _, entry in ipairs(entries) do
     if entry.isDir then
-      term.write("  " .. c.cyan .. entry.name .. "/".. c.white .. "\n")
+      term.write(" d. " .. c.cyan .. entry.name .. "/".. c.white .. "\n")
     else
       local size_str = self:format_size(entry.size)
-      term.write("  " .. entry.name .. " " .. c.green .. "(" .. size_str .. c.white .. ")\n")
+      local cx, cy = term.getCursorPos()
+      cy = cy + 1
+      term.write(" f. " .. entry.size)
+      term.setCursorPos((cx + 14), cy)
+      term.write(" ".. c.green .. size_str .. c.white)
+      term.setCursorPos(cx + 22, cy)
+      term.setCursorBlink(false)
+      term.write(entry.name .. "\n")
+      term.setCursorBlink(true)
     end
   end
 end
@@ -220,27 +228,27 @@ end
 -- format file size
 function shell:format_size(size)
   if size < 1024 then
-    return size .. "B"
+    return size .. "b"
   elseif size < 1024 * 1024 then
-    return string.format("%.1fK", size / 1024)
+    return string.format("%.1fk", size / 1024)
   else
-    return string.format("%.1fM", size / (1024 * 1024))
+    return string.format("%.1fm", size / (1024 * 1024))
   end
 end
 
 -- display the prompt and read input
 function shell:prompt()
-  local cwd_display = c.green .. "[" .. c.white .. self.cwd .. c.green .. "]" .. c.white
+  local cwd_display = c.green .. "[" .. c.white .. self.cwd .. c.green .. ":" .. c.white
   --term.write(cwd_display .. "\n")
-  local prompt_str = cwd_display .. " " .. self.config.prompt_format .. c.green .. "> " .. c.white
+  local prompt_str = cwd_display .. c.green .. self.config.prompt_format .. c.white
   return readline.read(prompt_str)
 end
 
--- Change directory with history tracking
+-- change directory with history tracking
 function shell:change_dir(path)
   local new_path = self:resolve_path(path)
 
-  -- Check if directory exists (skip for root - f_stat can't stat root)
+  -- check if directory exists (skip for root - f_stat can't stat root)
   if not self:is_root(new_path) then
     local fs_check = self:fs_path(new_path)
     if not fs.isDir(fs_check) then
@@ -248,12 +256,12 @@ function shell:change_dir(path)
     end
   end
 
-  -- Ensure trailing slash for directories (except root)
+  -- ensure trailing slash for directories (except root)
   if new_path ~= "/" and not new_path:match("/$") then
     new_path = new_path .. "/"
   end
 
-  -- Root is a special case
+  -- root is a special case
   if new_path == "//" then
     new_path = "/"
   end
@@ -263,11 +271,9 @@ function shell:change_dir(path)
   return true
 end
 
---------------------------------------------------------------------------------
--- Command Registration
---------------------------------------------------------------------------------
+-- command registration
 
--- Register a command
+-- register a command
 function shell:register(cmd_def)
   if type(cmd_def) ~= "table" then
     return self:error("Invalid command definition")
@@ -283,7 +289,7 @@ function shell:register(cmd_def)
     run = cmd_def.run or function() end,
   }
 
-  -- Register aliases
+  -- register aliases
   if cmd_def.aliases then
     for _, alias in ipairs(cmd_def.aliases) do
       self.commands[alias] = self.commands[name]
@@ -293,13 +299,13 @@ function shell:register(cmd_def)
   return true
 end
 
--- Load external commands from directory
+-- load external commands from directory
 function shell:load_external_commands()
   local cmd_path = self.config.external_cmd_path
   local fs_cmd_path = self:fs_path(cmd_path)
 
   if not fs.isDir(fs_cmd_path) then
-    return  -- No external commands directory, that's fine
+    return  -- no external commands directory, that's fine
   end
 
   local entries = fs.list(fs_cmd_path)
@@ -319,7 +325,7 @@ function shell:load_external_commands()
   end
 end
 
--- Execute a command
+-- execute a command
 function shell:execute(cmd, args)
   if not cmd then return end
 
@@ -335,16 +341,14 @@ function shell:execute(cmd, args)
   end
 end
 
---------------------------------------------------------------------------------
--- Built-in Commands
---------------------------------------------------------------------------------
+-- built-in Commands
 
 local builtin_commands = {
-  -- help: Show available commands
+  -- help: show available commands
   {
     name = "help",
     aliases = {"?"},
-    help = "'help [cmd]' - show help for commands",
+    help = c.cyan.."help"..c.yellow.." [cmd]"..c.white.."- show help for commands",
     run = function(args, sh)
       if args[1] then
         -- help for specific command
@@ -372,7 +376,7 @@ local builtin_commands = {
         table.sort(cmds, function(a, b) return a.name < b.name end)
 
         for _, cmd in ipairs(cmds) do
-	  term.write("  " .. cmd.help .. "\n")
+          term.write(" " .. cmd.help .. "\n")
         end
       end
     end
@@ -382,7 +386,7 @@ local builtin_commands = {
   {
     name = "exit",
     aliases = {"quit", "q"},
-    help = "'exit' - exit the shell",
+    help = c.cyan.."exit"..c.white.." - exit the shell",
     run = function(args, sh)
       term.write("Exiting shell...\n")
       sh.running = false
@@ -393,12 +397,12 @@ local builtin_commands = {
   {
     name = "ls",
     aliases = {"dir", "list"},
-    help = "'ls [dir]' - list directory contents",
+    help = c.cyan.."ls"..c.yellow.." [dir]"..c.white.." - list directory contents",
     run = function(args, sh)
       local path = sh:resolve_path(args[1])
       local fspath = sh:fs_path(path)
 
-      -- Skip isDir check for root (f_stat can't stat root in FatFS)
+      -- skip isDir check for root (f_stat can't stat root)
       if not sh:is_root(path) then
         if not fs.isDir(fspath) then
           return sh:error("'" .. (args[1] or path) .. "' is not a directory")
@@ -411,30 +415,31 @@ local builtin_commands = {
     end
   },
 
-  -- cd: Change directory
+  -- cd: change directory
   {
     name = "cd",
-    help = "'cd [dir|..|-]' - change directory",
+    help = c.cyan.."cd"..c.yellow.." [dir|..|-]"..c.white.." - change directory",
     run = function(args, sh)
       local path = args[1] or "/"
       sh:change_dir(path)
     end
   },
 
-  -- pwd: Print working directory
+  -- pwd: print working directory
   {
     name = "pwd",
-    help = "'pwd' - print current directory",
+    aliases = {"cwd"},
+    help = c.cyan.."pwd"..c.white.." - print current directory",
     run = function(args, sh)
       term.write(sh.cwd .. "\n")
     end
   },
 
-  -- cat: Display file contents
+  -- cat: display file contents
   {
     name = "cat",
     aliases = {"type"},
-    help = "'cat <file>' - display file contents",
+    help = c.cyan.."cat"..c.yellow.." <file>"..c.white.." - display file contents",
     run = function(args, sh)
       if not args[1] then
         return sh:error("Usage: cat <file>")
@@ -465,11 +470,11 @@ local builtin_commands = {
     end
   },
 
-  -- edit: Open file in editor
+  -- edit: open file in editor
   {
     name = "edit",
     aliases = {"vi", "nano"},
-    help = "'edit <file>' - open file in editor",
+    help = c.cyan.."edit"..c.yellow.." <file>"..c.white.." - open file in editor",
     run = function(args, sh)
       if not args[1] then
         return sh:error("Usage: edit <file>")
@@ -484,7 +489,7 @@ local builtin_commands = {
         end
         edit(fspath)
       else
-        -- Create new file
+        -- create new file
         local f = fs.open(fspath, "w+")
         if f then
           f:close()
@@ -496,11 +501,11 @@ local builtin_commands = {
     end
   },
 
-  -- rm: Remove file
+  -- rm: delete file
   {
     name = "rm",
     aliases = {"del", "delete"},
-    help = "'rm <file>' - delete file",
+    help = c.cyan.."rm"..c.yellow.." <file>"..c.white.." - delete file",
     run = function(args, sh)
       if not args[1] then
         return sh:error("Usage: rm <file>")
@@ -522,10 +527,10 @@ local builtin_commands = {
     end
   },
 
-  -- mkdir: Create directory
+  -- mkdir: create directory
   {
     name = "mkdir",
-    help = "'mkdir <dir>' - create directory",
+    help = c.cyan.."mkdir"..c.yellow.." <dir>"..c.white.." - create directory",
     run = function(args, sh)
       if not args[1] then
         return sh:error("Usage: mkdir <dir>")
@@ -538,7 +543,7 @@ local builtin_commands = {
         return sh:error("'" .. args[1] .. "' already exists")
       end
 
-      if fs.mkdir(fspath) then
+      if fs.makeDir(fspath) then
         sh:success("Created '" .. args[1] .. "'")
       else
         return sh:error("Failed to create '" .. args[1] .. "'")
@@ -546,10 +551,10 @@ local builtin_commands = {
     end
   },
 
-  -- rmdir: Remove directory
+  -- rmdir: delete directory (if empty)
   {
     name = "rmdir",
-    help = "'rmdir <dir>' - remove empty directory",
+    help = c.cyan.."rmdir"..c.yellow.." <dir>"..c.white.." - remove empty directory",
     run = function(args, sh)
       if not args[1] then
         return sh:error("Usage: rmdir <dir>")
@@ -566,7 +571,7 @@ local builtin_commands = {
         return sh:error("'" .. args[1] .. "' is not a directory")
       end
 
-      -- Check if empty
+      -- check if empty
       local entries = fs.list(fspath)
       if entries and #entries > 0 then
         return sh:error("Directory not empty")
@@ -577,11 +582,11 @@ local builtin_commands = {
     end
   },
 
-  -- mv: Move/rename file
+  -- mv: move/rename file
   {
     name = "mv",
     aliases = {"rename", "ren"},
-    help = "'mv <src> <dst>' - move or rename file",
+    help = c.cyan.."mv"..c.yellow.." <src> <dst>"..c.white.." - move or rename file",
     run = function(args, sh)
       if not args[1] or not args[2] then
         return sh:error("Usage: mv <source> <destination>")
@@ -609,11 +614,11 @@ local builtin_commands = {
     end
   },
 
-  -- cp: Copy file
+  -- cp: copy file
   {
     name = "cp",
     aliases = {"copy"},
-    help = "'cp <src> <dst>' - copy file",
+    help = c.cyan.."cp"..c.yellow.." <source> <dest>"..c.white.." - copy file",
     run = function(args, sh)
       if not args[1] or not args[2] then
         return sh:error("Usage: cp <source> <destination>")
@@ -636,7 +641,7 @@ local builtin_commands = {
         return sh:error("'" .. args[2] .. "' already exists")
       end
 
-      -- Read source
+      -- read source file
       local sf = fs.open(src_fs, "r")
       if not sf then
         return sh:error("Cannot read '" .. args[1] .. "'")
@@ -644,7 +649,7 @@ local builtin_commands = {
       local content = sf:readAll()
       sf:close()
 
-      -- Write destination
+      -- write destination file
       local df = fs.open(dst_fs, "w")
       if not df then
         return sh:error("Cannot write '" .. args[2] .. "'")
@@ -656,11 +661,11 @@ local builtin_commands = {
     end
   },
 
-  -- eval: Execute Lua code
+  -- eval: execute Lua code
   {
     name = "eval",
     aliases = {"exec", "lua"},
-    help = "'eval <code>' - execute Lua code",
+    help = c.cyan.."eval"..c.yellow.." <lua code>"..c.white.." - execute Lua code",
     run = function(args, sh)
       if #args == 0 then
         return sh:error("Usage: eval <lua code>")
@@ -684,11 +689,11 @@ local builtin_commands = {
     end
   },
 
-  -- run: Execute Lua file
+  -- run: execute Lua file (dofile)
   {
     name = "run",
     aliases = {"dofile"},
-    help = "'run <file>' - execute Lua script",
+    help = c.cyan.."run"..c.yellow.." <file.lua>"..c.white.." - execute Lua script",
     run = function(args, sh)
       if not args[1] then
         return sh:error("Usage: run <file.lua>")
@@ -708,20 +713,21 @@ local builtin_commands = {
     end
   },
 
-  -- clear: Clear screen
+  -- clear: clear screen
   {
     name = "clear",
     aliases = {"cls"},
-    help = "'clear' - clear the screen",
+    help = c.cyan.."clear"..c.white.." - clear the screen",
     run = function(args, sh)
       term.clear()
     end
   },
 
-  -- history: Show command history
+  -- history: show command history
   {
     name = "history",
-    help = "'history [n]' - show command history (last n entries)",
+    aliases = {"hist"},
+    help = c.cyan.."history"..c.yellow.." [n]"..c.white.." - show command history (last n entries)",
     run = function(args, sh)
       local count = tonumber(args[1]) or #readline.history
       local start = math.max(1, #readline.history - count + 1)
@@ -737,29 +743,29 @@ local builtin_commands = {
     end
   },
 
-  -- info: System information
+  -- info: system info
   {
     name = "info",
     aliases = {"sysinfo"},
-    help = "'info' - show system information",
+    help = c.cyan.."info"..c.white.." - show system information",
     run = function(args, sh)
-      term.write(c.green.."PicoCalc System Info:" .. c.white .. "\n")
-      term.write("    CPU Mhz:  " .. sys.getClock() .. "\n")
+      term.write(c.green .. "PicoCalc System Info:" .. c.white .. "\n")
+      term.write(c.cyan .. "    CPU Mhz:  " .. c.white .. sys.getClock() .. "\n")
       local totalMem = sys.totalMemory()
       local freeMem = sys.freeMemory()
       local usedMem = totalMem - freeMem
-      term.write("Tot. Memory:  " .. sh:format_size(totalMem) .. "\n")
-      term.write("Used Memory:  " .. sh:format_size(usedMem) .. "\n")
-      term.write("Free Memory:  " .. sh:format_size(freeMem) .. "\n")
-      term.write("    Battery:  " .. sys.battery() .. " %\n")
+      term.write(c.cyan .. "Tot. Memory:  " .. c.white .. sh:format_size(totalMem) .. "\n")
+      term.write(c.cyan .. "Used Memory:  " .. c.white .. sh:format_size(usedMem) .. "\n")
+      term.write(c.cyan .. "Free Memory:  " .. c.white .. sh:format_size(freeMem) .. "\n")
+      term.write(c.cyan .. "    Battery:  " .. c.white .. sys.battery() .. " %\n")
 
       if wifi and wifi.isInitialized and wifi.isInitialized() then
         local status = wifi.isConnected() and "connected" or "disconnected"
-        term.write("      Wi-Fi:  " .. status .. "\n")
+        term.write(c.cyan .. "      Wi-Fi:  " .. c.white .. status .. "\n")
         if wifi.isConnected() and wifi.getInfo then
           local info = wifi.getInfo()
           if info and info.ip then
-            term.write(" IP Address:  " .. info.ip .. "\n")
+            term.write(c.cyan .. " IP Address:  " .. c.white .. info.ip .. "\n")
           end
         end
       end
@@ -770,10 +776,10 @@ local builtin_commands = {
   {
     name = "batt",
     aliases = {"battery"},
-    help = "'batt' - show battery info",
+    help = c.cyan.."batt"..c.white.." - show battery info",
     run = function(args, sh)
       local batt = sys.battery()
-      term.write("Battery: " .. batt .. " %\n")
+      term.write(c.cyan .. "Battery: " .. c.white .. batt .. " %\n")
     end
   },
 
@@ -781,7 +787,7 @@ local builtin_commands = {
   {
     name = "reload",
     aliases = {},
-    help = "'reload' - reload external commands",
+    help = c.cyan.."reload"..c.white.." - reload external commands",
     run = function(args, sh)
       sh:load_external_commands()
       term.write("External commands reloaded.\n")
@@ -789,35 +795,33 @@ local builtin_commands = {
   },
 }
 
---------------------------------------------------------------------------------
--- Main Shell Loop
---------------------------------------------------------------------------------
+-- main: setup and loop
 
 local function main()
-  -- Register built-in commands
+  -- register built-in commands
   for _, cmd in ipairs(builtin_commands) do
     shell:register(cmd)
   end
 
-  -- Load external commands
+  -- load external commands
   if shell.config.load_external then
     shell:load_external_commands()
   end
 
-  -- Load command history
+  -- load command history
   readline.max_history = shell.config.max_history
   readline.load_history(shell.config.history_file)
 
-  -- Welcome message
+  -- welcome message
   term.write("\n")
-  term.write(c.cyan .. "PicoCalc Shell" .. c.white .. " - Type 'help' for commands\n")
+  term.write(c.green .. "PicoCalc Lua Shell" .. c.white .. " - Type '" .. c.cyan .. "help" .. c.white .. "' for commands\n")
 
-  -- Main loop
+  -- loop until 'exit' sets shell.running to false 
   while shell.running do
     local input = shell:prompt()
 
     if input and input ~= "" then
-      -- Add to history
+      -- add to history
       readline.add_history(input)
 
       local cmd, args = shell:parse_input(input)
@@ -825,9 +829,9 @@ local function main()
     end
   end
 
-  -- Save command history on exit
+  -- save command history on exit
   readline.save_history(shell.config.history_file)
 end
 
--- Run the shell
+-- send it!
 main()

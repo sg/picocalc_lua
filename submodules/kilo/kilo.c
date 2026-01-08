@@ -150,7 +150,7 @@ char *Lua_HL_keywords[] = {
 
 	/* Libs (ending with pipe) will be marked as HL_KEYWORD2 */
 	"math|","table|","string|","term|","draw|","keys|","sys|","fs|",
-	"colors|","sound|",NULL
+	"colors|","sound|","wifi|","socket|",NULL
 };
 
 struct editorSyntax HLDB[] = {

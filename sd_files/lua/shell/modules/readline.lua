@@ -119,21 +119,21 @@ local function delete_backward()
   end
 end
 
--- Delete character at cursor (delete key)
+-- delete character at cursor (delete key)
 local function delete_forward()
   if state.cursor_x <= #state.buffer then
     local before = state.buffer:sub(1, state.cursor_x - 1)
     local after = state.buffer:sub(state.cursor_x + 1)
     state.buffer = before .. after
 
-    -- Rewrite from cursor position
+    -- rewrite from cursor position
     local new_x = state.prompt_len + state.cursor_x
     term.write(after .. " ")  -- Space clears the last char
     term.setCursorPos(new_x, getCursorLineY())
   end
 end
 
--- Move cursor left
+-- move cursor left
 local function cursor_left()
   if state.cursor_x > 1 then
     state.cursor_x = state.cursor_x - 1
@@ -141,7 +141,7 @@ local function cursor_left()
   end
 end
 
--- Move cursor right
+-- move cursor right
 local function cursor_right()
   if state.cursor_x <= #state.buffer then
     state.cursor_x = state.cursor_x + 1
@@ -149,7 +149,7 @@ local function cursor_right()
   end
 end
 
--- Move cursor to start of input
+-- move cursor to start of input
 local function cursor_home()
   if state.cursor_x > 1 then
     state.cursor_x = 1
@@ -157,7 +157,7 @@ local function cursor_home()
   end
 end
 
--- Move cursor to end of input
+-- move cursor to end of input
 local function cursor_end()
   if state.cursor_x <= #state.buffer then
     state.cursor_x = #state.buffer + 1
@@ -165,25 +165,25 @@ local function cursor_end()
   end
 end
 
--- Set buffer content (used by history navigation)
+-- set buffer content
 local function set_buffer(text)
   state.buffer = text
-  state.cursor_x = #text + 1  -- Cursor at end
+  state.cursor_x = #text + 1  -- cursor at end
   full_redraw()
 end
 
--- Navigate history up (older)
+-- navigate history up (older)
 local function history_up()
   if #readline.history == 0 then
     return
   end
 
-  -- Save current input when starting to browse
+  -- save current input when starting to browse
   if state.history_pos == 0 then
     state.saved_input = state.buffer
   end
 
-  -- Move up in history
+  -- move up in history
   if state.history_pos < #readline.history then
     state.history_pos = state.history_pos + 1
     local idx = #readline.history - state.history_pos + 1
@@ -191,13 +191,13 @@ local function history_up()
   end
 end
 
--- Navigate history down (newer)
+-- navigate history down (newer)
 local function history_down()
   if state.history_pos > 0 then
     state.history_pos = state.history_pos - 1
 
     if state.history_pos == 0 then
-      -- Restore saved input
+      -- restore saved input
       set_buffer(state.saved_input)
     else
       local idx = #readline.history - state.history_pos + 1
@@ -206,31 +206,31 @@ local function history_down()
   end
 end
 
--- Add entry to history
+-- add entry to history
 function readline.add_history(line)
   if not line or line == "" then
     return
   end
 
-  -- Don't add duplicates of the last entry
+  -- don't add duplicates of the last entry
   if #readline.history > 0 and readline.history[#readline.history] == line then
     return
   end
 
   table.insert(readline.history, line)
 
-  -- Trim history if too long
+  -- trim history if too long
   while #readline.history > readline.max_history do
     table.remove(readline.history, 1)
   end
 end
 
--- Clear history
+-- clear history
 function readline.clear_history()
   readline.history = {}
 end
 
--- Load history from file
+-- load history from file
 function readline.load_history(filename)
   if not fs.exists(filename) then
     return false
@@ -251,7 +251,7 @@ function readline.load_history(filename)
   end
   f:close()
 
-  -- Trim if loaded file was too long
+  -- trim if loaded file was too long
   while #readline.history > readline.max_history do
     table.remove(readline.history, 1)
   end
@@ -259,25 +259,27 @@ function readline.load_history(filename)
   return true
 end
 
--- Save history to file
+-- save history to file
 function readline.save_history(filename)
+  term.write("Saving command history...\n")
   local f = fs.open(filename, "w")
   if not f then
-    return false
+   return sh:error("Couldn't open '"..filename.."'\n")
   end
 
   for _, line in ipairs(readline.history) do
     f:writeLine(line)
   end
   f:close()
+  term.write("Saved to: " .. filename .." \n")
   return true
 end
 
--- Main read function
+-- main read function
 function readline.read(prompt)
   prompt = prompt or ">"
 
-  -- Initialize state
+  -- initialize state
   state.buffer = ""
   state.cursor_x = 1
   state.history_pos = 0
@@ -285,18 +287,18 @@ function readline.read(prompt)
   state.prompt = prompt
   state.prompt_len = visible_length(prompt)
 
-  -- Show prompt
+  -- show prompt
+  term.setCursorBlink(false)
   term.write(prompt)
-  --term.setCursorBlink(true)
-
+  term.setCursorBlink(true)
+  
   while true do
     local key_state, modifiers, code = keys.wait(true, true)
 
-    -- Handle special keys
+    -- handle special keys
     if code == keys.enter then
-      -- Accept input
-      --term.setCursorBlink(false)
-      print("")  -- Move to next line
+      -- accept input
+      print("")  -- move to next line
       return state.buffer
 
     elseif code == keys.backspace then
@@ -324,14 +326,16 @@ function readline.read(prompt)
       cursor_end()
 
     elseif code == keys.esc then
-      -- Cancel input
-      --term.setCursorBlink(false)
+      -- cancel input
       print("")
       return nil
 
     elseif type(code) == "string" and #code == 1 and keys.isPrintable(code) then
-      -- Regular printable character
+      -- regular printable character
+      term.setCursorBlink(false)
       insert_char(code)
+      term.setCursorBlink(true)
+      
     end
   end
 end

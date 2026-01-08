@@ -1,8 +1,133 @@
 --[[
 
   wifi-start.lua
-  Scan for Wi-Fi networks and connect to one selected by the user
+  Load wifi details from pre-existing config file or
+  scan for Wi-Fi networks and connect to one selected by the user
 ]]
+
+require("lua/shell/modules/xor")
+local b64 = require("lua/shell/modules/base64")
+
+local wifi_config_path = "lua/wifi-config.save"
+local wifi_config = {}
+local using_config = false
+local selected = {}
+local password = ""
+local auth = wifi.AUTH_OPEN
+local xkey = "x92@.gPa3{dO0B88B80O0-s"
+
+-- funcs to encode/decode
+local function encode(val, key)
+  return b64.encode(xor(val, key))
+end
+
+local function decode(val, key)
+  return xor(b64.decode(val), key)
+end
+
+-- funcs to load/save wifi_config from/to file 
+local function loadWifiConfig(filename)
+  local func, err = loadfile(filename)
+  if func then
+    local success, wifi_conf = pcall(func)
+    if success then
+      return wifi_conf
+    else
+      print("Error executing config file: " .. wifi_config)
+      return nil
+    end
+  else
+    print("Error loading config file: " .. err)
+    return nil
+  end
+end 
+
+local function saveWifiConfig(filename, data_table)
+  local file = fs.open(filename, "w")
+  if file then
+    -- serialize the table into Lua code and write to a file.
+    -- in the future can be read and loaded into a table with pcall.
+    file:write("return ")
+    local serialized_data = "{\n"
+    for k, v in pairs(data_table) do
+      local key_str = type(k) == "string" and string.format('"%s"', k) or tostring(k)
+      local val_str = type(v) == "string" and string.format('"%s"', v) or tostring(v)
+      serialized_data = serialized_data .. string.format('    [%s] = %s,\n', key_str, val_str)
+    end
+    serialized_data = serialized_data .. "}\n"
+
+    file:write(serialized_data)
+    file:close()
+    return true
+  else
+    print("Error: Could not open file for writing.")
+    return false
+  end
+end
+
+-- func to scan for SSIDs
+local function scanForSSIDsAndConnect()
+  print("Scanning for networks...")
+  local networks, err = wifi.scan()
+
+  if not networks then
+    print("Scan failed: " .. (err or "unknown error"))
+    return
+  end
+
+  if #networks == 0 then
+    print("No networks found")
+    return
+  end
+
+  -- sort by signal strength
+  table.sort(networks, function(a, b)
+    return a.rssi > b.rssi
+  end)
+
+  -- display networks
+  print("\nAvailable networks:")
+  print("-------------------")
+  for i, net in ipairs(networks) do
+    local security = net.secure and "*" or " "
+    local signal = ""
+    if net.rssi >= -50 then
+      signal = "[====]"
+    elseif net.rssi >= -60 then
+      signal = "[=== ]"
+    elseif net.rssi >= -70 then
+      signal = "[==  ]"
+    elseif net.rssi >= -80 then
+      signal = "[=   ]"
+    else
+      signal = "[    ]"
+    end
+    print(string.format("%2d. %s %s %s", i, security, signal, net.ssid))
+  end
+  print("\n* = secured network")
+
+  -- select a network
+  print("")
+  local selection = term.read("Enter number (1-" .. #networks .. "): ")
+  local idx = tonumber(selection)
+
+  if not idx or idx < 1 or idx > #networks then
+    print("Invalid selection")
+    return
+  end
+
+  selected = networks[idx]
+  print("\nConnecting to: " .. selected.ssid)
+
+  -- get password if network is secured
+  if selected.secure then
+    password = term.read("Password: ")
+    if not password or password == "" then
+      print("Password required for secured network")
+      return
+    end
+  end
+end
 
 -- check if already connected
 if wifi.isInitialized() and wifi.isConnected() then
@@ -23,83 +148,42 @@ if not wifi.isInitialized() then
   end
 end
 
--- scan for ssids
-print("Scanning for networks...")
-local networks, err = wifi.scan()
-
-if not networks then
-  print("Scan failed: " .. (err or "unknown error"))
-  return
-end
-
-if #networks == 0 then
-  print("No networks found")
-  return
-end
-
--- sort by signal strength
-table.sort(networks, function(a, b)
-  return a.rssi > b.rssi
-end)
-
--- display networks
-print("\nAvailable networks:")
-print("-------------------")
-for i, net in ipairs(networks) do
-  local security = net.secure and "*" or " "
-  local signal = ""
-  if net.rssi >= -50 then
-    signal = "[====]"
-  elseif net.rssi >= -60 then
-    signal = "[=== ]"
-  elseif net.rssi >= -70 then
-    signal = "[==  ]"
-  elseif net.rssi >= -80 then
-    signal = "[=   ]"
-  else
-    signal = "[    ]"
+-- check for existing wifi config file
+if fs.exists(wifi_config_path) then
+  wifi_config = loadWifiConfig(wifi_config_path)
+  local conf_ssid = wifi_config.ssid
+  print("Wifi config found for SSID: " .. conf_ssid)
+  term.write("Connect to this SSID? [Y]/n: ")
+  if term.read() ~= "n" then
+    -- connect using existing config
+    using_config = true
   end
-  print(string.format("%2d. %s %s %s", i, security, signal, net.ssid))
-end
-print("\n* = secured network")
-
--- select a network
-print("")
-local selection = term.read("Enter number (1-" .. #networks .. "): ")
-local idx = tonumber(selection)
-
-if not idx or idx < 1 or idx > #networks then
-  print("Invalid selection")
-  return
-end
-
-local selected = networks[idx]
-print("\nConnecting to: " .. selected.ssid)
-
--- get password if network is secured
-local password = ""
-if selected.secure then
-  password = term.read("Password: ")
-  if not password or password == "" then
-    print("Password required for secured network")
-    return
-  end
+else
+  scanForSSIDsAndConnect()
 end
 
 -- set auth mode to WPA2 for now
-local auth = wifi.AUTH_OPEN
 if selected.secure then
   auth = wifi.AUTH_WPA2  
 end
 
 -- connect
 print("Connecting...")
-local ok, conn_err = wifi.connect(selected.ssid, password, auth, 30000)
-
-if not ok then
-  print("Connection failed: " .. (conn_err or "unknown error"))
-  return
+if using_config then
+  --print("debug: using ssid: " .. wifi_config.ssid .. " pass: " .. wifi_config.pass .. " auth: " .. wifi_config.auth)
+  local ok, conn_err = wifi.connect(wifi_config.ssid, decode(wifi_config.pass, xkey), wifi_config.auth, 30000)
+  if not ok then
+    print("Connection failed: " .. (conn_err or "unknown error"))
+    return
+  end
+else
+  local ok, conn_err = wifi.connect(selected.ssid, password, auth, 30000)
+  if not ok then
+    print("Connection failed: " .. (conn_err or "unknown error"))
+    return
+  end
 end
+
 
 -- wait for DHCP to assign IP
 print("Waiting for IP address...")
@@ -122,3 +206,16 @@ if wifi.isConnected() then
 else
   print("\nConnection timed out waiting for IP")
 end
+
+-- if we manually configured wifi info then offer to save
+-- for future use
+if not using_config then
+  term.write("Save Wifi connection info to config file? [Y]/n: ")
+  if term.read() ~= n then
+    wifi_config.ssid = selected.ssid
+    wifi_config.pass = encode(password, xkey)
+    wifi_config.auth = auth
+    saveWifiConfig(wifi_config_path, wifi_config)
+  end
+end
+  

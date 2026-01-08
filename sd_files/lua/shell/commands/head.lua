@@ -4,9 +4,22 @@
 
 ]]
 
+-- ANSI color codes
+local c = {
+  black   = "\27[90m",
+  red     = "\27[91m",
+  green   = "\27[92m",
+  yellow  = "\27[93m",
+  blue    = "\27[94m",
+  magenta = "\27[95m",
+  cyan    = "\27[96m",
+  white   = "\27[97m",
+  reset   = "\27[0m",
+}
+
 return {
   name = "head",
-  help = "'head <file> [n]' - output first n lines of a file",
+  help = c.cyan.."head"..c.yellow.." <file> [n]"..c.white.." - print top n lines of a file",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: head <file> [num_lines]")

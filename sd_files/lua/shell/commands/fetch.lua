@@ -1,13 +1,26 @@
 --[[
 
-  fetch.lua - Simple HTTP fetch command
+  fetch.lua - simple HTTP fetch command similar to wget
 
 ]]
+
+-- ANSI color codes
+local c = {
+  black   = "\27[90m",
+  red     = "\27[91m",
+  green   = "\27[92m",
+  yellow  = "\27[93m",
+  blue    = "\27[94m",
+  magenta = "\27[95m",
+  cyan    = "\27[96m",
+  white   = "\27[97m",
+  reset   = "\27[0m",
+}
 
 return {
   name = "fetch",
   aliases = {"wget", "get"},
-  help = "'fetch <url> [file]' - download URL (optionally save to file)",
+  help = c.cyan.."fetch"..c.yellow.." <url> [file]"..c.white.." - download URL (to file)",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: fetch <url> [output_file]")

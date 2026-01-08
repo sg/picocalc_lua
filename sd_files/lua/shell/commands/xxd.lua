@@ -1,28 +1,30 @@
 --[[
 
-  hexdump.lua - Display file in hexadecimal
+  xxd.lua - output hex and ascii byte values
+                for a given file
 
 ]]
 
+-- ANSI color codes
+local c = {
+  black   = "\27[90m",
+  red     = "\27[91m",
+  green   = "\27[92m",
+  yellow  = "\27[93m",
+  blue    = "\27[94m",
+  magenta = "\27[95m",
+  cyan    = "\27[96m",
+  white   = "\27[97m",
+  reset   = "\27[0m",
+}
+
 return {
-  name = "hexdump",
-  aliases = {"xxd", "hd"},
-  help = "'hexdump <file> [bytes]' - display file in hex (default 256 bytes)",
+  name = "xxd",
+  aliases = {"hexdump"},
+  help = c.cyan.."xxd"..c.yellow.." <file> [count]"..c.white.." - print hex/ascii values of file (256 deflt)",
   run = function(args, sh)
-    local c = {
-      black   = "\27[90m",
-      red     = "\27[91m",
-      green   = "\27[92m",
-      yellow  = "\27[93m",
-      blue    = "\27[94m",
-      magenta = "\27[95m",
-      cyan    = "\27[96m",
-      white   = "\27[97m",
-      reset   = "\27[0m",
-      
-    }
     if not args[1] then
-      return sh:error("Usage: hexdump <file> [max_bytes]")
+      return sh:error("Usage: xxd <file> [count]")
     end
 
     local path = sh:resolve_path(args[1])
@@ -45,6 +47,10 @@ return {
     -- make sure file isn't larger than free memory
     local fattrib = fs.attributes(fspath)
     print("file size: " .. fattrib.size)
+    local freemem = sys.freeMemory()
+    if freemem < fattrib.size then
+      return sh:error("File larger than free memory ("..freemem..")")
+    end
 
     -- for now we lazily load the whole file into memory.
     -- this can cause an out of memory panic if the file is

@@ -3,10 +3,23 @@
   (requires the whois.lua module in shell/modules)
 ]]
 
+-- ANSI color codes
+local c = {
+  black   = "\27[90m",
+  red     = "\27[91m",
+  green   = "\27[92m",
+  yellow  = "\27[93m",
+  blue    = "\27[94m",
+  magenta = "\27[95m",
+  cyan    = "\27[96m",
+  white   = "\27[97m",
+  reset   = "\27[0m",
+}
+
 return {
   name = "whois",
   aliases = {"who"},
-  help = "'whois <domain|ip address> [file]' - retrieve WHOIS info (optionally save to file)",
+  help = c.cyan.."whois"..c.yellow.." <domain|ip> [file]"..c.white.." - get WHOIS info (save to file)",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: whois <domain|ip address> [output_file]")

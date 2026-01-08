@@ -1,13 +1,25 @@
 --[[
   ping.lua - 
-  Uses ICMP ping when available (socket.ping), otherwise
-  it falls back to a TCP connect test.
+  ICMP ping (using socket.ping)
 ]]
+
+-- ANSI color codes
+local c = {
+  black   = "\27[90m",
+  red     = "\27[91m",
+  green   = "\27[92m",
+  yellow  = "\27[93m",
+  blue    = "\27[94m",
+  magenta = "\27[95m",
+  cyan    = "\27[96m",
+  white   = "\27[97m",
+  reset   = "\27[0m",
+}
 
 return {
   name = "ping",
   aliases = {""},
-  help = "'ping <host> [count]'",
+  help = c.cyan.."ping"..c.yellow.." <host> [count]"..c.white.." - ICMP ping host",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: ping <host> [count]")
