@@ -134,6 +134,7 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 	- [`udp()`](#udp)
 	- [`tls()`](#tls)
 	- [`dns.resolve(hostname)`](#dnsresolvehostname)
+    - [`ping(hostname, timeout)`](#ping)
 	- [`Socket:connect(host, port, [timeout])`](#socketconnecthost-port-timeout)
 	- [`Socket:send(data)`](#socketsenddata)
 	- [`Socket:receive([size], [timeout])`](#socketreceivesize-timeout)
@@ -1167,6 +1168,21 @@ Create a new TLS socket for encrypted HTTPS connections. Certificate verificatio
 **Returns**
 1. `TLSSocket` - A new TLS socket object
 2. `string` - Error message if creation failed
+
+## `ping(hostname|IP, timeout)`
+Send an ICMP echo request packet to host 
+
+**Parameters**
+1. `hostname|IP : string` - The hostname or IP to ping
+2. `timeout: int` - timeout in milliseconds 
+
+**Returns**
+1. `table | nil` - A table holding the ping state fields, or nil if socket creation failed
+   * `success : bool` - if a reply was recieved
+   * `time : int` - milliseconds elapsed
+   * `ttl : int` - time to live
+   * `ip : string` - IP of host (after successful dns lookup)
+2. `string` - Error message if socket creation failed
 
 ## `dns.resolve(hostname)`
 Resolve a hostname to an IP address
