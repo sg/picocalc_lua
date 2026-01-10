@@ -1,4 +1,4 @@
-# Wi-Fi Module for PicoCalc <!-- omit in toc -->
+# Wi-Fi Module for PicoCalc Lua<!-- omit in toc -->
 
 The `wifi` module provides Wi-Fi networking capabilities for the PicoCalc running on a Pico 2W (RP2350 with CYW43 wireless chip). This module enables scanning for networks, connecting to access points, and retrieving network information.
 
@@ -336,13 +336,4 @@ end
    - `-70 to -80 dBm`: Weak signal
    - `-80 to -90 dBm`: Very weak, may have issues
 
-7. **Blocking operations** - All Wi-Fi operations (scan, connect) are blocking. The device will be unresponsive during these operations. Plan your UI accordingly.
-
----
-
-## Future Enhancements
-
-The following features are planned for future releases:
-
-- **Phase 2**: TCP/UDP socket support for raw network communication
-- **Phase 3**: HTTP/HTTPS client for web requests with TLS encryption
+7. **Blocking operations** - All Wi-Fi operations (scan, connect) are blocking. The device will be unresponsive during these operations.
