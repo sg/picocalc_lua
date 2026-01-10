@@ -34,19 +34,18 @@ return {
       return sh:error("Cannot open '" .. args[1] .. "'")
     end
 
-    --local content = f:readAll()
-    local content = {}
-    local line = f:readLine()
-    while line ~= nil do
-      table.insert(content, line)
-      line = f:readLine()
-    end 
-    f:close()
+    --local content = {}
+    --local line = f:readLine()
+    --while line ~= nil do
+    --  table.insert(content, line)
+    --  line = f:readLine()
+    --end 
+    --f:close()
 
-    if content == {} then
-      print("(empty file)")
-      return
-    end
+    --if content == {} then
+    --  print("(empty file)")
+    --  return
+    --end
 
     term.clear()
     local lines_per_page = 39
@@ -54,8 +53,15 @@ return {
     local page_lines = 0
     local current_page_lines = {}
     local saved_line = nil
-    for i,line in ipairs(content) do
-    
+    local reading = true
+    --for i,line in ipairs(content) do
+    while reading do
+      
+      local line = f:readLine()
+      if not line then
+        reading = false
+        break
+      end
 
       if saved_line then
         -- starting a new page of lines, starting
@@ -113,6 +119,7 @@ return {
         -- continue to next line
       end 
     end
+    f:close()
     -- got all the lines, print remainder still in
     -- the page table
     for c, pline in ipairs(current_page_lines) do
