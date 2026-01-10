@@ -18,7 +18,7 @@ local nc = {}
 
 -- Configuration
 nc.TIMEOUT = 30       -- Connection timeout (seconds)
-nc.RECV_TIMEOUT = 0.1 -- Receive poll timeout (seconds)
+nc.RECV_TIMEOUT = 0.1 -- Receive timeout (seconds)
 nc.BUFFER_SIZE = 1024 -- Receive buffer size
 
 -- Show help

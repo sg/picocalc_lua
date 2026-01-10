@@ -21,7 +21,7 @@ local c = {
 return {
   name = "xxd",
   aliases = {"hexdump"},
-  help = c.cyan.."xxd"..c.yellow.." <file> [count]"..c.white.." - print hex/ascii values of file (256 deflt)",
+  help = c.cyan.."xxd"..c.yellow.." <file> [count]"..c.white.." - print hex/ascii values of file",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: xxd <file> [count]")

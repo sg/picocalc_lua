@@ -5,7 +5,7 @@
   scan for Wi-Fi networks and connect to one selected by the user
 ]]
 
-require("lua/shell/modules/xor")
+local x = require("lua/shell/modules/xor")
 local b64 = require("lua/shell/modules/base64")
 
 local wifi_config_path = "lua/wifi-config.save"
@@ -18,11 +18,11 @@ local xkey = "x92@.gPa3{dO0B88B80O0-s"
 
 -- funcs to encode/decode
 local function encode(val, key)
-  return b64.encode(xor(val, key))
+  return b64.encode(x.xor(val, key))
 end
 
 local function decode(val, key)
-  return xor(b64.decode(val), key)
+  return x.xor(b64.decode(val), key)
 end
 
 -- funcs to load/save wifi_config from/to file 
@@ -153,8 +153,7 @@ if fs.exists(wifi_config_path) then
   wifi_config = loadWifiConfig(wifi_config_path)
   local conf_ssid = wifi_config.ssid
   print("Wifi config found for SSID: " .. conf_ssid)
-  term.write("Connect to this SSID? [Y]/n: ")
-  if term.read() ~= "n" then
+  if term.read("Connect to this SSID? [Y]/n: ") ~= "n" then
     -- connect using existing config
     using_config = true
   end
@@ -210,8 +209,7 @@ end
 -- if we manually configured wifi info then offer to save
 -- for future use
 if not using_config then
-  term.write("Save Wifi connection info to config file? [Y]/n: ")
-  if term.read() ~= n then
+  if term.read("Save Wifi connection info to config file? [Y]/n: ") ~= n then
     wifi_config.ssid = selected.ssid
     wifi_config.pass = encode(password, xkey)
     wifi_config.auth = auth

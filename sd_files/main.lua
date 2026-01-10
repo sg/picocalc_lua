@@ -2,6 +2,7 @@
 -- main.lua - startup file for picocalc_lua
 --------------------------------------------
 
+print("")
 term.setTextColor(colors.lime)
 print("Available modules:")
 term.setTextColor(colors.lightBlue)
@@ -15,12 +16,11 @@ term.write("\n\n")
 browser = loadfile("lua/browser.lua")
 --if browser then print("File browser available at: browser()") end
 
---term.write("Init Wifi? [Y]/n: ")
---if term.read() ~= "n" then
+--if term.read("Init Wifi? [Y]/n: ") ~= "n" then
 --  dofile("lua/wifi-start.lua")
 --end
-term.write("Start command shell? [Y]/n: ")
-if term.read() ~= "n" then
+
+if term.read("Start command shell? [Y]/n: ") ~= "n" then
   dofile("shell.lua")
 end
 

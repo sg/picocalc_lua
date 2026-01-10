@@ -19,7 +19,7 @@ local c = {
 return {
   name = "whois",
   aliases = {"who"},
-  help = c.cyan.."whois"..c.yellow.." <domain|ip> [file]"..c.white.." - get WHOIS info (save to file)",
+  help = c.cyan.."whois"..c.yellow.." <domain|ip> [file]"..c.white.." - get WHOIS info [to file]",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: whois <domain|ip address> [output_file]")
