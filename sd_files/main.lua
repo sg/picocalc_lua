@@ -13,7 +13,7 @@ end
 term.setTextColor(colors.white)
 term.write("\n\n")
 
-browser = loadfile("lua/browser.lua")
+--browser = loadfile("lua/browser.lua")
 --if browser then print("File browser available at: browser()") end
 
 --if term.read("Init Wifi? [Y]/n: ") ~= "n" then

@@ -15,6 +15,7 @@ static bool wifi_initialized = false;
 static wifi_scan_result_t* scan_results = NULL;
 static int scan_count = 0;
 static volatile bool scan_in_progress = false;
+static char connected_ssid[33] = {0};
 
 // max number of scan results to store
 #define MAX_SCAN_RESULTS 64
@@ -212,6 +213,14 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
         result = cyw43_arch_wifi_connect_blocking(ssid, pw, cyw_auth);
     }
 
+    // store SSID on success, clear on failure
+    if (result == 0) {
+        strncpy(connected_ssid, ssid, sizeof(connected_ssid) - 1);
+        connected_ssid[sizeof(connected_ssid) - 1] = '\0';
+    } else {
+        connected_ssid[0] = '\0';
+    }
+
     return result;
 }
 
@@ -220,6 +229,7 @@ void wifi_disconnect(void) {
         return;
     }
     cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+    connected_ssid[0] = '\0';
 }
 
 wifi_status_t wifi_get_status(void) {
@@ -279,6 +289,19 @@ bool wifi_get_netmask(char* nm_out, size_t nm_len) {
 
     const ip4_addr_t* nm = netif_ip4_netmask(netif);
     snprintf(nm_out, nm_len, "%s", ip4addr_ntoa(nm));
+    return true;
+}
+
+bool wifi_get_ssid(char* ssid_out, size_t ssid_len) {
+    if (!wifi_initialized || ssid_out == NULL || ssid_len == 0) {
+        return false;
+    }
+
+    if (connected_ssid[0] == '\0') {
+        return false;
+    }
+
+    snprintf(ssid_out, ssid_len, "%s", connected_ssid);
     return true;
 }
 

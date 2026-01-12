@@ -34,19 +34,6 @@ return {
       return sh:error("Cannot open '" .. args[1] .. "'")
     end
 
-    --local content = {}
-    --local line = f:readLine()
-    --while line ~= nil do
-    --  table.insert(content, line)
-    --  line = f:readLine()
-    --end 
-    --f:close()
-
-    --if content == {} then
-    --  print("(empty file)")
-    --  return
-    --end
-
     term.clear()
     local lines_per_page = 39
     local line_count = 0

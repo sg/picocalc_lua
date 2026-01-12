@@ -208,13 +208,17 @@ function shell:print_dir(entries)
   end)
 
   for _, entry in ipairs(entries) do
+    local cx, cy = term.getCursorPos()
+    cy = cy + 1  
     if entry.isDir then
-      term.write(" d. " .. c.cyan .. entry.name .. "/".. c.white .. "\n")
+      term.write(" Dir" )
+      term.setCursorPos(cx + 6, cy)
+      term.setCursorBlink(false)
+      term.write(c.yellow .. entry.name .. "/".. c.white .. "\n")
+      term.setCursorBlink(true)    
     else
       local size_str = self:format_size(entry.size)
-      local cx, cy = term.getCursorPos()
-      cy = cy + 1
-      term.write(" f. " .. entry.size)
+      term.write(" --- " .. entry.size)
       term.setCursorPos((cx + 14), cy)
       term.write(" ".. c.green .. size_str .. c.white)
       term.setCursorPos(cx + 22, cy)
@@ -489,13 +493,18 @@ local builtin_commands = {
         end
         edit(fspath)
       else
-        -- create new file
-        local f = fs.open(fspath, "w+")
-        if f then
-          f:close()
-          edit(fspath)
+        -- create new file?        
+        local ans = term.read("Create new file ".. c.green .. fspath .. c.white .. " ? y/[N]: ")
+        if ans ~= "y" then
+          term.write("Ok, not created.\n")
         else
-          return sh:error("Cannot create '" .. args[1] .. "'")
+          local f = fs.open(fspath, "w+")
+          if f then
+            f:close()
+            edit(fspath)
+          else
+            return sh:error("Cannot create '" .. args[1] .. "'")
+          end
         end
       end
     end
@@ -764,7 +773,8 @@ local builtin_commands = {
         term.write(c.cyan .. "      Wi-Fi:  " .. c.white .. status .. "\n")
         if wifi.isConnected() and wifi.getInfo then
           local info = wifi.getInfo()
-          if info and info.ip then
+          if info then
+            term.write(c.cyan .. "       SSID:  " .. c.white .. info.ssid .. "\n")
             term.write(c.cyan .. " IP Address:  " .. c.white .. info.ip .. "\n")
           end
         end

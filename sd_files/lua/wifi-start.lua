@@ -5,10 +5,10 @@
   scan for Wi-Fi networks and connect to one selected by the user
 ]]
 
-local x = require("lua/shell/modules/xor")
-local b64 = require("lua/shell/modules/base64")
+local x = require("lua/xor")
+local b64 = require("lua/base64")
 
-local wifi_config_path = "lua/wifi-config.save"
+local wifi_config_path = "lua/wifi.conf"
 local wifi_config = {}
 local using_config = false
 local selected = {}
@@ -33,11 +33,11 @@ local function loadWifiConfig(filename)
     if success then
       return wifi_conf
     else
-      print("Error executing config file: " .. wifi_config)
+      print("Error loading wifi config values: " .. wifi_config)
       return nil
     end
   else
-    print("Error loading config file: " .. err)
+    print("Error reading wifi config file: " .. err)
     return nil
   end
 end 
@@ -72,12 +72,12 @@ local function scanForSSIDsAndConnect()
 
   if not networks then
     print("Scan failed: " .. (err or "unknown error"))
-    return
+    return false
   end
 
   if #networks == 0 then
     print("No networks found")
-    return
+    return false
   end
 
   -- sort by signal strength
@@ -113,7 +113,7 @@ local function scanForSSIDsAndConnect()
 
   if not idx or idx < 1 or idx > #networks then
     print("Invalid selection")
-    return
+    return false
   end
 
   selected = networks[idx]
@@ -124,9 +124,10 @@ local function scanForSSIDsAndConnect()
     password = term.read("Password: ")
     if not password or password == "" then
       print("Password required for secured network")
-      return
+      return false
     end
   end
+  return true
 end
 
 -- check if already connected
@@ -141,8 +142,17 @@ end
 
 -- init wi-fi if needed
 if not wifi.isInitialized() then
+  local country_code = term.read("Set Wi-Fi two-letter country code [US]: ")  
+  if country_code == "" then
+    country_code = "US"
+  end
+  if #country_code ~= 2 then
+    print("Country code must be a two-letter code")
+    print("(e.g., GB, US, CA, DE, FR, etc.")
+    return
+  end
   print("Initializing Wi-Fi...")
-  if not wifi.init("US") then
+  if not wifi.init(country_code) then
     print("Failed to initialize Wi-Fi")
     return
   end
@@ -157,8 +167,13 @@ if fs.exists(wifi_config_path) then
     -- connect using existing config
     using_config = true
   end
-else
-  scanForSSIDsAndConnect()
+end
+
+if not using_config then
+  if not scanForSSIDsAndConnect() then
+    print("Scan and select network failed.")
+    return
+  end
 end
 
 -- set auth mode to WPA2 for now

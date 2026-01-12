@@ -32,21 +32,17 @@ return {
       return sh:error("Cannot open '" .. args[1] .. "'")
     end
 
-    local content = f:readAll()
+    local count = 0
+    while count < num_lines do
+      local line = f:readLine()
+      if not line then
+        break
+      else
+        print(line)
+        count = count + 1
+      end    
+    end
     f:close()
 
-    if not content or content == "" then
-      print("(empty file)")
-      return
-    end
-
-    local count = 0
-    for line in content:gmatch("[^\n]*") do
-      if count >= num_lines then
-        break
-      end
-      print(line)
-      count = count + 1
-    end
   end
 }

@@ -217,7 +217,7 @@ static int l_wifi_get_netmask(lua_State* L) {
 }
 
 // wifi.getInfo() -> table|nil
-// returns a table with all network info: {ip="...", gateway="...", netmask="..."}
+// returns a table with all network info: {ssid="...", ip="...", gateway="...", netmask="..."}
 // returns nil if not connected
 static int l_wifi_get_info(lua_State* L) {
     if (wifi_get_status() != WIFI_STATUS_UP) {
@@ -225,9 +225,14 @@ static int l_wifi_get_info(lua_State* L) {
         return 1;
     }
 
-    char ip[16], gw[16], nm[16];
+    char ssid[33], ip[16], gw[16], nm[16];
 
-    lua_createtable(L, 0, 3);
+    lua_createtable(L, 0, 4);
+
+    if (wifi_get_ssid(ssid, sizeof(ssid))) {
+        lua_pushstring(L, ssid);
+        lua_setfield(L, -2, "ssid");
+    }
 
     if (wifi_get_ip(ip, sizeof(ip))) {
         lua_pushstring(L, ip);

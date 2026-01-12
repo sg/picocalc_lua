@@ -30,34 +30,27 @@ return {
       return sh:error("Cannot open '" .. args[1] .. "'")
     end
 
-    -- reading the whole file for now, but should change
-    -- this to be smarter so it doesn't cause an out of
-    -- memory panic if the file is larger than available
-    -- memory. Down below it loads the content as lines
-    -- into a table, which doubles the memory footprint.
-    local content = f:readAll()
+    local count = 0
+    local pos = f:seek("end", (-80 * num_lines))
+    --print("pos = " .. pos)
+    local tail_table = {}
+    while true do
+      local line = f:readLine()
+      if not line then
+        break
+      else
+        table.insert(tail_table, line)
+        count = count + 1
+      end
+    end
+    --print("read " .. count .. " lines.")
     f:close()
-
-    if not content or content == "" then
-      print("(empty file)")
-      return
-    end
-
-    -- load all lines into a table... yes, terrible
-    local lines = {}
-    for line in content:gmatch("[^\n]*") do
-      table.insert(lines, line)
-    end
-
-    -- remove any empty lines 
-    if lines[#lines] == "" then
-      table.remove(lines)
-    end
-
-    -- prrint last n lines
-    local start = math.max(1, #lines - num_lines + 1)
-    for i = start, #lines do
-      print(lines[i])
+    
+    local extra_lines = count - num_lines
+    for i = 1, count do
+      if i > extra_lines then
+        print(tail_table[i])
+      end
     end
   end
 }

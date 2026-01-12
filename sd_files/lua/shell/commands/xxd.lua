@@ -34,29 +34,15 @@ return {
       return sh:error("Cannot open '" .. args[1] .. "'")
     end
 
-    -- make sure file isn't larger than free memory
     local fattrib = fs.attributes(fspath)
     print("file size: " .. fattrib.size)
-    local freemem = sys.freeMemory()
-    if freemem < fattrib.size then
-      return sh:error("File larger than free memory ("..freemem..")")
-    end
 
-    -- for now we lazily load the whole file into memory.
-    -- this can cause an out of memory panic if the file is
-    -- larger than free memory. ymmv...
-    local content = f:readAll()
-    f:close()
-
-    if not content then
-      print("(empty file)")
-      return
-    end
-
-    local len = math.min(#content, max_bytes)
+    local len = math.min(fattrib.size, max_bytes)
     local offset = 0
 
     while offset < len do
+
+      local read_bytes = f:read(16)
       -- offset address (hex)
       local hex_offset = string.format(c.yellow .. "%08x:" .. c.white, offset)
 
@@ -64,10 +50,10 @@ return {
       local hex_part = ""
       local ascii_part = ""
 
-      for i = 0, 15 do
-        local pos = offset + i + 1
+      for i = 1, 16 do
+        local pos = offset + i
         if pos <= len then
-          local byte = string.byte(content, pos)
+          local byte = string.byte(read_bytes, i)
           hex_part = hex_part .. string.format("%02x", byte)
 
           -- ASCII representation
@@ -94,10 +80,12 @@ return {
       offset = offset + 16
     end
 
-    if #content > max_bytes then
-      print(string.format("... (%d more bytes)", #content - max_bytes))
+    f:close()
+
+    if fattrib.size > max_bytes then
+      print(string.format("... (%d more bytes)", fattrib.size - max_bytes))
     end
 
-    print(string.format("\nTotal: %d bytes", #content))
+    print(string.format("\nTotal: %d bytes", fattrib.size))
   end
 }

@@ -56,6 +56,7 @@ wifi_status_t wifi_get_status(void);
 bool wifi_get_ip(char* ip_out, size_t ip_len);
 bool wifi_get_gateway(char* gw_out, size_t gw_len);
 bool wifi_get_netmask(char* nm_out, size_t nm_len);
+bool wifi_get_ssid(char* ssid_out, size_t ssid_len);
 
 // background processing (call from picolua.c main loop)
 void wifi_poll(void);

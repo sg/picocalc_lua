@@ -1,9 +1,11 @@
 --[[
-  wifi-stop.lua
-  Disconnect from Wi-Fi network and optionally deinitialize.
+  
+wifi-stop.lua
+  Disconnect from Wi-Fi network
+
 ]]
 
--- Check current state
+-- check current state
 if not wifi.isInitialized() then
     print("Wi-Fi is not initialized")
     return
@@ -11,16 +13,16 @@ end
 
 if not wifi.isConnected() then
     print("Wi-Fi is not connected")
-    -- Ask if user wants to deinitialize anyway
-    local answer = term.read("Deinitialize Wi-Fi? (y/n): ")
-    if answer and (answer:lower() == "y" or answer:lower() == "yes") then
-        wifi.deinit()
-        print("Wi-Fi deinitialized")
-    end
+    -- ask if user wants to deinitialize anyway
+    --local answer = term.read("Deinitialize Wi-Fi? (y/n): ")
+    --if answer and (answer:lower() == "y" or answer:lower() == "yes") then
+    --    wifi.deinit()
+    --    print("Wi-Fi deinitialized")
+    --end
     return
 end
 
--- Show current connection info
+-- show current connection info
 local info = wifi.getInfo()
 if info then
     print("Currently connected:")
@@ -28,22 +30,25 @@ if info then
     print("  IP:   " .. info.ip)
 end
 
--- Disconnect
+-- disconnect
 print("\nDisconnecting...")
 wifi.disconnect()
+-- delay
+for i = 1, 10000 do end
 
--- Verify disconnection
+-- verify disconnection
 if not wifi.isConnected() then
     print("Disconnected successfully")
 else
-    print("Warning: Still appears connected")
+    print("Wi-Fi still appears connected.")
+    print("Wait a few seconds and try again.")
 end
 
--- Ask about deinitializing
-local answer = term.read("\nDeinitialize Wi-Fi? (y/n): ")
-if answer and (answer:lower() == "y" or answer:lower() == "yes") then
-    wifi.deinit()
-    print("Wi-Fi deinitialized")
-else
-    print("Wi-Fi remains initialized (can reconnect faster)")
-end
+-- deinitialize?
+--local answer = term.read("\nDeinitialize Wi-Fi? (y/n): ")
+--if answer and (answer:lower() == "y" or answer:lower() == "yes") then
+--    wifi.deinit()
+--    print("Wi-Fi deinitialized")
+--else
+--    print("Wi-Fi remains initialized (can reconnect faster)")
+--end

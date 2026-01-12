@@ -25,9 +25,9 @@ return {
         local info = wifi.getInfo()
         if info then
           if info.ssid then
-            print("  SSID:    " .. info.ssid)
+            print(" SSID: " .. info.ssid)
           end
-          print("  IP:      " .. info.ip)
+          print("   IP: " .. info.ip)
           --print("  Gateway: " .. info.gateway)
           --print("  Netmask: " .. info.netmask)
         end
