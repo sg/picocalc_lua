@@ -60,7 +60,7 @@ static int l_term_clear(lua_State* L) {
 }
 
 static int l_term_clearLine(lua_State* L) {
-	term_erase_line(term_get_y());
+	term_erase_current_line();
 	return 0;
 }
 
