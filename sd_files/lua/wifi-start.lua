@@ -5,8 +5,8 @@
   scan for Wi-Fi networks and connect to one selected by the user
 ]]
 
-local x = require("lua/xor")
-local b64 = require("lua/base64")
+local x = require("lua/modules/xor")
+local b64 = require("lua/modules/base64")
 
 local wifi_config_path = "lua/wifi.conf"
 local wifi_config = {}

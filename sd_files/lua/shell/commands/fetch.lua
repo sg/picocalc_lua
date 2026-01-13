@@ -5,7 +5,7 @@
 ]]
 
 -- ANSI color codes
-local c = require("lua/shell/modules/simple-colors")
+local c = require("lua/modules/simple-colors")
 
 return {
   name = "fetch",
@@ -24,7 +24,7 @@ return {
     local output_file = args[2]
 
     -- Load http module
-    local ok, http = pcall(require, "lua/shell/modules/http")
+    local ok, http = pcall(require, "lua/modules/http")
     if not ok then
       return sh:error("HTTP module not available")
     end

@@ -6,7 +6,7 @@
 ]]
 
 -- ANSI color codes
-local c = require("lua/shell/modules/simple-colors")
+local c = require("lua/modules/simple-colors")
 
 return {
   name = "xxd",
