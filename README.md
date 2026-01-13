@@ -17,6 +17,7 @@ You can find more credits running `credits()` at the Lua prompt
 sudo apt update
 sudo apt install build-essential gcc-arm-none-eabi git cmake python3
 
+git clone --recurse-submodules https://github.com/raspberrypi/pico-sdk.git
 git clone --recurse-submodules https://github.com/Lana-chan/picocalc_lua
 cd picocalc_lua
 ```
@@ -24,11 +25,15 @@ cd picocalc_lua
 ## Build
 
 ```
-mkdir build
+cmake -S . -B build -DPICO_SDK_PATH=../pico-sdk -DPICO_BOARD=pico2_w # change depending on your board
 cd build
-cmake .. -DPICO_BOARD=pico2 # change depending on your board
 make
 ```
+## Install
+
+If using UF2 loader (https://github.com/pelrun/uf2loader), copy the picolua.uf2 file from your picocalc_lua/build directory to either the pico1-apps or pico2-apps directory on the SD card (depending on which board you have).
+
+Otherwise, follow the standard firmware flashing instructions for PicoCalc.
 
 ## Usage
 
