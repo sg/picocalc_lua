@@ -11,7 +11,7 @@
 
 #define LWIP_TIMEVAL_PRIVATE        0
 
-// memory configuration
+// memory config
 #define MEM_LIBC_MALLOC             0
 #define MEM_ALIGNMENT               4
 #define MEM_SIZE                    8192
@@ -50,23 +50,23 @@
 #define DHCP_DOES_ARP_CHECK         0
 #define LWIP_DHCP_DOES_ACD_CHECK    0
 
-// ALTCP (Application Layer TCP) for TLS support
+// altcp (application layer tcp) for tls support
 #define LWIP_ALTCP                  1
 #define LWIP_ALTCP_TLS              1
 #define LWIP_ALTCP_TLS_MBEDTLS      1
 
-// TLS config- disable certificate verification 
+// tls config- disable certificate verification 
 // (0 = MBEDTLS_SSL_VERIFY_NONE)
 #define ALTCP_MBEDTLS_AUTHMODE      0
 
-// ALTCP PCB pool
+// altcp PCB pool
 #define MEMP_NUM_ALTCP_PCB          4
 
 // disable stats to save memory
 #define LWIP_STATS                  0
 #define LWIP_STATS_DISPLAY          0
 
-// don't allow netif state to be changed from lwIP thread
+// don't allow netif state to be changed from lwip thread
 #define LWIP_NETIF_EXT_STATUS_CALLBACK 1
 
 #ifndef NDEBUG
