@@ -1,6 +1,7 @@
 --[[
 
-  A simple CLI shell for picocalc_lua
+  A simple command-line interface (shell) for
+  picocalc_lua.
 
   Built-in commands are defined in the 'commands' 
   table. External commands can be added by placing
@@ -206,27 +207,31 @@ function shell:print_dir(entries)
     end
     return a.name:lower() < b.name:lower()
   end)
-
+  
+  term.setCursorBlink(false)      
   for _, entry in ipairs(entries) do
     local cx, cy = term.getCursorPos()
     cy = cy + 1  
     if entry.isDir then
-      term.write(" Dir" )
-      term.setCursorPos(cx + 6, cy)
-      term.setCursorBlink(false)
+      term.write("  --Dir-- " )
+      term.setCursorPos(cx + 12, cy)
       term.write(c.yellow .. entry.name .. "/".. c.white .. "\n")
-      term.setCursorBlink(true)    
     else
       local size_str = self:format_size(entry.size)
-      term.write(" --- " .. entry.size)
-      term.setCursorPos((cx + 14), cy)
-      term.write(" ".. c.green .. size_str .. c.white)
-      term.setCursorPos(cx + 22, cy)
-      term.setCursorBlink(false)
+      local entry_size = tostring(entry.size)
+      local cx_offset = cx + (10 - #entry_size)
+      term.setCursorPos(cx_offset, cy)
+      term.write(entry_size)
+      term.setCursorPos(cx + 12, cy)
+      --term.write(c.green .. size_str .. c.white)
+      --term.setCursorPos(cx + 22, cy)
       term.write(entry.name .. "\n")
-      term.setCursorBlink(true)
     end
   end
+  term.write("\n")
+  --term.write(c.green.."-----------------------------------"..c.white.."\n")
+  term.setCursorBlink(true)
+      
 end
 
 -- format file size
@@ -324,6 +329,7 @@ function shell:load_external_commands()
         self:register(result)
       elseif not ok then
         self:warn("Failed to load command: " .. entry.name)
+        print(tostring(result))
       end
     end
   end
@@ -358,7 +364,7 @@ local builtin_commands = {
         -- help for specific command
         local cmd = sh.commands[args[1]]
         if cmd then
-          term.write(cmd.help .. "\n")
+          term.write(cmd.help .. "\n") 
         else
           sh:error("Unknown command: " .. args[1])
         end
@@ -413,7 +419,10 @@ local builtin_commands = {
         end
       end
 
-      term.write(c.green.."Contents of '"..path.."':"..c.white.."\n")
+      term.write(c.green.."-----------------------------------"..c.white.."\n")
+      term.write(c.green.." " .. path ..c.white..":\n")
+      term.write("\n")
+      --term.write(c.green.."-----------------------------------"..c.white.."\n")
       local entries = fs.list(fspath)
       sh:print_dir(entries)
     end
@@ -549,13 +558,14 @@ local builtin_commands = {
       local fspath = sh:fs_path(path)
 
       if fs.exists(fspath) then
-        return sh:error("'" .. args[1] .. "' already exists")
+        return sh:error("'" .. path .. "' already exists")
       end
-
-      if fs.makeDir(fspath) then
-        sh:success("Created '" .. args[1] .. "'")
+      
+      fs.makeDir(fspath)
+      if fs.exists(fspath) then
+        sh:success("Created '" .. path .. "'")
       else
-        return sh:error("Failed to create '" .. args[1] .. "'")
+        return sh:error("Failed to create '" .. path .. "'")
       end
     end
   },
@@ -573,11 +583,11 @@ local builtin_commands = {
       local fspath = sh:fs_path(path)
 
       if not fs.exists(fspath) then
-        return sh:error("'" .. args[1] .. "' not found")
+        return sh:error("'" .. path .. "' not found")
       end
 
       if not fs.isDir(fspath) then
-        return sh:error("'" .. args[1] .. "' is not a directory")
+        return sh:error("'" .. path .. "' is not a directory")
       end
 
       -- check if empty
@@ -587,7 +597,11 @@ local builtin_commands = {
       end
 
       fs.delete(fspath)
-      sh:success("Removed '" .. args[1] .. "'")
+      if not fs.exists(fspath) then
+        return sh:success("Removed '" .. path .. "'")
+      else
+        return sh:error("Failed. Dirctory '" .. path .. "' still exists.")
+      end
     end
   },
 
@@ -650,23 +664,34 @@ local builtin_commands = {
         return sh:error("'" .. args[2] .. "' already exists")
       end
 
-      -- read source file
+      -- open source file for reading
       local sf = fs.open(src_fs, "r")
       if not sf then
-        return sh:error("Cannot read '" .. args[1] .. "'")
+        return sh:error("Cannot open for reading '" .. args[1] .. "'")
       end
-      local content = sf:readAll()
-      sf:close()
 
-      -- write destination file
+      -- open dest file for writing
       local df = fs.open(dst_fs, "w")
       if not df then
-        return sh:error("Cannot write '" .. args[2] .. "'")
+        return sh:error("Cannot open for writing '" .. args[2] .. "'")
       end
-      df:write(content or "")
+
+      -- read/write 1KB at a time
+      local block = sf:read(1024)
+      local bytes_copied = 0
+      while block ~= nil do
+        df:write(block)
+        bytes_copied = bytes_copied + #block
+        local x, y = term.getCursorPos()
+        term.setCursorPos(1, y+1)
+        term.write("Bytes copied: " .. bytes_copied)
+        block = sf:read(1024)
+      end
+
+      sf:close()
       df:close()
 
-      sh:success("Copied '" .. args[1] .. "' to '" .. args[2] .. "'")
+      sh:success("\nCopied '" .. args[1] .. "' to '" .. args[2] .. "'")
     end
   },
 
