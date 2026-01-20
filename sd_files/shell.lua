@@ -676,16 +676,29 @@ local builtin_commands = {
         return sh:error("Cannot open for writing '" .. args[2] .. "'")
       end
 
-      -- read/write 1KB at a time
-      local block = sf:read(1024)
+      -- read/write 16KB at a time if wifi not
+      -- connected, otherwise reduce to 4KB
+      local block_size
+      if wifi.isConnected() then
+        block_size = 4096
+      else
+        block_size = 16384
+      end
+      local block = sf:read(block_size)
       local bytes_copied = 0
+      local blocks_copied = 0
       while block ~= nil do
         df:write(block)
+        df:flush()
         bytes_copied = bytes_copied + #block
+        blocks_copied = blocks_copied + 1
         local x, y = term.getCursorPos()
         term.setCursorPos(1, y+1)
         term.write("Bytes copied: " .. bytes_copied)
-        block = sf:read(1024)
+        if blocks_copied % 100 == 0 then
+          term.write(" (freeMemory: " .. sys.freeMemory() .. ")")
+        end
+        block = sf:read(block_size)
       end
 
       sf:close()
