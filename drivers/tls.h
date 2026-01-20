@@ -21,7 +21,7 @@
 #define TLS_ERR_WOULDBLOCK  -11
 
 // Receive buffer size
-#define TLS_RECV_BUF_SIZE   4096
+#define TLS_RECV_BUF_SIZE   16382
 
 // Forward declarations
 struct altcp_pcb;
