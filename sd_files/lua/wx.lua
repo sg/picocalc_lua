@@ -24,18 +24,84 @@ if not ok then
   return
 end
 
-local default_lat = "30.31"
-local default_lon = "-97.95"
+local ok, serialize = pcall(require,"lua/modules/serialize")
+if not ok then
+  print("Can't find 'lua/modules/serialize.lua'")
+  return
+end
 
-local lat = term.read("Enter latitude: [" .. default_lat .. "] ")
-if lat == "" then lat = default_lat end
+local default_lat = "30.25"
+local default_lon = "-97.75"
+local lat = ""
+local lon = ""
+local wx_conf_path = "lua/wx.conf"
+local wx_conf = {}
+local using_conf = false
 
-local lon = term.read("Enter longitude: [" .. default_lon .. "] ")
-if lon == "" then lon = default_lon end
+local function loadConfig()
+  --
+  local func, err = loadfile(wx_conf_path)
+  if not func then
+    print(c.red .. "Error: " .. c.white .. "failed to load wx.conf: " .. err)
+    return false
+  end
+  local success, conf = pcall(func)
+  if not success then
+    print(c.red .. "Error: " .. c.white .. "failed to pcall wx.conf code.")
+    return false
+  end
+  wx_conf = conf
+  print("wx.conf loaded...") 
+  return true
+end
 
- 
+if fs.exists(wx_conf_path) then
+  print("found " .. wx_conf_path) 
+  if loadConfig() then
+    using_config = true
+  end
+end
+
+if using_config then
+  -- available locations in config
+  local picker = {}
+  for name, loc in pairs(wx_conf) do
+    --print(name .. " (" .. loc["lat"] .. "," .. loc["lon"] .. ")")
+    table.insert(picker, name)
+  end
+
+  -- sort alphabtically
+  table.sort(picker, function(a, b)
+    return a:lower() < b:lower()
+  end)
+
+  for i, name in ipairs(picker) do
+    print(string.format("%2d. %s", i, name))
+  end
+  local selection = term.read("Choose location: [1] ")
+  if selection == "" then selection = "1" end
+  if tonumber(selection) > #picker then
+    print(c.red .. "Error: " .. c.white .. "invalid selection.")
+    return
+  end
+
+  local loc_idx = tonumber(selection)
+  lat = wx_conf[picker[loc_idx]]["lat"]  
+  lon = wx_conf[picker[loc_idx]]["lon"]
+  
+  
+else
+
+  lat = term.read("Enter latitude: [" .. default_lat .. "] ")
+  if lat == "" then lat = default_lat end
+  
+  lon = term.read("Enter longitude: [" .. default_lon .. "] ")
+  if lon == "" then lon = default_lon end
+end  
+   
+--print("chosen = " .. lat .. ", "..lon)
 local url = "https://api.open-meteo.com/v1/forecast?latitude=" .. lat .. "&longitude=" .. lon .. "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&wind_speed_unit=mph&temperature_unit=fahrenheit&precipitation_unit=inch"
-
+--print("url = " ..url)
 
 if not wifi.isConnected() then
   print("Wi-Fi not connected")
