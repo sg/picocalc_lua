@@ -24,10 +24,11 @@ return {
     local output_file = args[2]
 
     -- Load http module
-    local ok, http = pcall(require, "lua/modules/http")
-    if not ok then
-      return sh:error("HTTP module not available")
-    end
+    local http = require("lua/modules/http")
+    --local ok, http = pcall(require, "lua/modules/http")
+    --if not ok then
+    --  return sh:error("HTTP module not available")
+    --end
 
     print("Fetching " .. url .. "...")
 
