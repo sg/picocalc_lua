@@ -8,6 +8,7 @@
 local x = require("lua/modules/xor")
 local b64 = require("lua/modules/base64")
 
+local wifi_country = ""
 local wifi_config_path = "lua/wifi.conf"
 local wifi_config = {}
 local using_config = false
@@ -140,36 +141,46 @@ if wifi.isInitialized() and wifi.isConnected() then
   return
 end
 
--- init wi-fi if needed
-if not wifi.isInitialized() then
-  local country_code = term.read("Set Wi-Fi two-letter country code [US]: ")  
-  if country_code == "" then
-    country_code = "US"
-  end
-  if #country_code ~= 2 then
-    print("Country code must be a two-letter code")
-    print("(e.g., GB, US, CA, DE, FR, etc.")
-    return
-  end
-  print("Initializing Wi-Fi...")
-  if not wifi.init(country_code) then
-    print("Failed to initialize Wi-Fi")
-    return
-  end
-end
+
 
 -- check for existing wifi config file
 if fs.exists(wifi_config_path) then
   wifi_config = loadWifiConfig(wifi_config_path)
-  local conf_ssid = wifi_config.ssid
-  print("Wifi config found for SSID: " .. conf_ssid)
+  print("Wifi config found for SSID: " .. wifi_config.ssid)
   if term.read("Connect to this SSID? [Y]/n: ") ~= "n" then
     -- connect using existing config
     using_config = true
   end
+  -- init wi-fi if needed
+  if not wifi.isInitialized() then  
+    print("Initializing Wi-Fi using stored country code (".. wifi_config.country ..")")
+    if not wifi.init(wifi_config.country) then
+      print("Failed to initialize Wi-Fi")
+      return
+    end
+  end
 end
 
+
 if not using_config then
+  -- init wi-fi if needed
+  if not wifi.isInitialized() then
+    wifi_country_code = term.read("Set Wi-Fi two-letter country code [US]: ")  
+    if wifi_country_code == "" then
+      wifi_country_code = "US"
+    end
+    if #wifi_country_code ~= 2 then
+      print("Country code must be a two-letter code")
+      print("(e.g., GB, US, CA, DE, FR, etc.")
+      return
+    end
+    print("Initializing Wi-Fi...")
+    if not wifi.init(wifi_country_code) then
+      print("Failed to initialize Wi-Fi")
+      return
+    end
+  end
+  -- scan for / connect to available networks
   if not scanForSSIDsAndConnect() then
     print("Scan and select network failed.")
     return
@@ -225,6 +236,7 @@ end
 -- for future use
 if not using_config then
   if term.read("Save Wifi connection info to config file? [Y]/n: ") ~= n then
+    wifi_config.country = wifi_country_code
     wifi_config.ssid = selected.ssid
     wifi_config.pass = encode(password, xkey)
     wifi_config.auth = auth
