@@ -28,7 +28,7 @@
 ]]
 
 -- load the http module
-local http = require("lua/shell/modules/http")
+local http = require("lua/modules/http")
 local curl = {}
 
 -- configuration
