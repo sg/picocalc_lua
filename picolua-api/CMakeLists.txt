@@ -20,6 +20,7 @@ target_sources(picolua-api INTERFACE
 	sound.c
 	wifi.c
 	socket.c
+	psram.c
 )
 
 target_link_libraries(picolua-api INTERFACE

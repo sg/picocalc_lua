@@ -8,6 +8,7 @@
 #include "sound.h"
 #include "wifi.h"
 #include "socket.h"
+#include "psram.h"
 #include "../corelua.h"
 #include "../drivers/draw.h"
 #include "../drivers/term.h"
@@ -67,6 +68,7 @@ void modules_register_wrappers(lua_State *L) {
 	luaL_requiref(L, "sound", &luaopen_sound, 1);
 	luaL_requiref(L, "wifi", &luaopen_wifi, 1);
 	luaL_requiref(L, "socket", &luaopen_socket, 1);
+	luaL_requiref(L, "psram", &luaopen_psram, 1);
 
 	lua_register(L, "edit", l_fs_editor);
 	lua_register(L, "credits", l_credits);
