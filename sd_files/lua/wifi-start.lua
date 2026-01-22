@@ -8,7 +8,7 @@
 local x = require("lua/modules/xor")
 local b64 = require("lua/modules/base64")
 
-local wifi_country = ""
+local wifi_country_code = ""
 local wifi_config_path = "lua/wifi.conf"
 local wifi_config = {}
 local using_config = false
@@ -197,6 +197,10 @@ print("Connecting...")
 if using_config then
   --print("debug: using ssid: " .. wifi_config.ssid .. " pass: " .. wifi_config.pass .. " auth: " .. wifi_config.auth)
   local ok, conn_err = wifi.connect(wifi_config.ssid, decode(wifi_config.pass, xkey), wifi_config.auth, 30000)
+  package.loaded["lua/modules/xor"] = nil
+  package.loaded["lua/modules/base64"] = nil
+  collectgarbage()
+    
   if not ok then
     print("Connection failed: " .. (conn_err or "unknown error"))
     return
@@ -241,6 +245,9 @@ if not using_config then
     wifi_config.pass = encode(password, xkey)
     wifi_config.auth = auth
     saveWifiConfig(wifi_config_path, wifi_config)
+    package.loaded["lua/modules/xor"] = nil
+    package.loaded["lua/modules/base64"] = nil
+    collectgarbage()    
   end
 end
   
