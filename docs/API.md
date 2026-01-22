@@ -1040,10 +1040,10 @@ Instrument objects have the following attributes which can be read and set:
 The Wi-Fi module provides networking capabilities for the PicoCalc running on a Pico 2W. All operations are blocking.
 
 ## `init([country])`
-Initialize the Wi-Fi hardware. Should be called before any other Wi-Fi functions.
+Initialize the Wi-Fi hardware. Must be called before any other Wi-Fi functions.
 
 **Parameters**
-1. `country : string` - Optional 2-letter country code (e.g., "US", "GB", "DE"). Recommended for regulatory compliance
+1. `country : string` - Optional 2-letter country code (e.g., "US", "GB", "DE").
 
 **Returns**
 1. `boolean` - Whether initialization was successful
@@ -1058,7 +1058,7 @@ Check if Wi-Fi has been initialized
 1. `boolean` - Whether Wi-Fi is initialized
 
 ## `scan()`
-Perform a blocking scan for available Wi-Fi networks
+Perform a scan for available Wi-Fi networks
 
 **Returns**
 1. `table | nil` - Array of network tables, or nil on failure
@@ -1071,7 +1071,7 @@ Perform a blocking scan for available Wi-Fi networks
 2. `string` - Error message if scan failed
 
 ## `connect(ssid, password, [auth], [timeout])`
-Connect to a Wi-Fi network (blocking operation)
+Connect to a Wi-Fi network 
 
 **Parameters**
 1. `ssid : string` - The network name to connect to
@@ -1102,19 +1102,19 @@ Check if connected to a network with an IP address
 Get the current IP address
 
 **Returns**
-1. `string | nil` - IP address as string (e.g., "192.168.1.100"), or nil if not connected
+1. `string | nil` - IP address or nil if not connected
 
 ## `getGateway()`
-Get the gateway address
+Get the gateway IP address
 
 **Returns**
-1. `string | nil` - Gateway address as string, or nil if not connected
+1. `string | nil` - Gateway IP address or nil if not connected
 
 ## `getNetmask()`
 Get the subnet mask
 
 **Returns**
-1. `string | nil` - Subnet mask as string (e.g., "255.255.255.0"), or nil if not connected
+1. `string | nil` - Subnet mask or nil if not connected
 
 ## `getInfo()`
 Get all network information as a table
@@ -1122,6 +1122,7 @@ Get all network information as a table
 **Returns**
 1. `table | nil` - Network information table, or nil if not connected
    * `ip : string` - IP address
+   * `ssid : string` - SSID of connected wifi network
    * `gateway : string` - Gateway address
    * `netmask : string` - Subnet mask
 
