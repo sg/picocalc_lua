@@ -7,9 +7,6 @@
 
 -- ANSI color codes
 local c = require("lua/modules/simple-colors")
-local json = require("lua/modules/json")
--- Load http module
-local http = require("lua/modules/http")
 
 
 return {
@@ -17,6 +14,9 @@ return {
   aliases = {"weather"},
   help = c.cyan.."wx"..c.yellow.." [lat][lon][file]"..c.white.." - download weather forecast",
   run = function(args, sh)
+    local json = require("lua/modules/json")
+    local http = require("lua/modules/http")
+
     local output_file = nil
     local lat = "30.31"
     local lon = "-97.95"
@@ -79,5 +79,11 @@ return {
       end
       print("")
     end
+
+    -- unload modules to save memory
+    package.loaded["lua/modules/http"] = nil
+    package.loaded["lua/modules/json"] = nil
+    collectgarbage()
+    
   end
 }
