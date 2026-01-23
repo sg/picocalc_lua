@@ -18,8 +18,8 @@ if browser then print("File browser available at: browser()") end
 
 if term.read("Connect to Wifi? [Y]/n: ") ~= "n" then
   dofile("lua/wifi-start.lua")
-  curl = require("lua/curl")
-  if curl then print("Curl network utility available at: curl()") end
+  --curl = require("lua/curl")
+  --if curl then print("Curl network utility available at: curl()") end
 end
 
 if term.read("Start command shell? [Y]/n: ") ~= "n" then
