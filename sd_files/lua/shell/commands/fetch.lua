@@ -62,5 +62,8 @@ return {
       print("")
       print(body)
     end
+    -- unload http module to free up memory
+    package.loaded["lua/modules/http"] = nil
+    collectgarbage()
   end
 }
