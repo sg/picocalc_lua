@@ -1,5 +1,5 @@
 /*
- * Wi-Fi Lua bindings for PicoCalc
+ * Wi-Fi bindings for picocalc_lua
  */
 #include <stdlib.h>
 #include <string.h>
@@ -11,8 +11,6 @@
 
 #include "../drivers/wifi.h"
 #include "modules.h"
-
-// init functions 
 
 // wifi.init([country]) -> boolean
 // country is two letter string (e.g., "US", "GB").
@@ -30,12 +28,12 @@ static int l_wifi_init(lua_State* L) {
     return 1;
 }
 
-// wifi.deinit() -> nil
-// shutdown hardware and free resources
+// wifi.deinit() -> error
+// Note: deinit is disabled because the Pico SDK's async_context_poll mode
+// is not multi-core safe. Calling cyw43_arch_deinit() from Core 1 (Lua)
+// while Core 0 runs wifi_poll() causes a deadlock. 
 static int l_wifi_deinit(lua_State* L) {
-    (void)L;
-    wifi_deinit();
-    return 0;
+    return luaL_error(L, "wifi.deinit() not supported (causes system freeze). Just power off your PicoCalc if you need to completely reset wifi for some reason.");
 }
 
 // wifi.isInitialized() -> boolean
@@ -43,8 +41,6 @@ static int l_wifi_is_initialized(lua_State* L) {
     lua_pushboolean(L, wifi_is_initialized());
     return 1;
 }
-
-// scanning functions
 
 // wifi.scan() -> table|nil, string
 // a blocking scan for available networks
@@ -108,13 +104,11 @@ static int l_wifi_scan(lua_State* L) {
         }
     }
 
-    // Free scan results after converting to Lua table
+    // free scan results 
     wifi_scan_free();
 
     return 1;
 }
-
-// connection functions
 
 // wifi.connect(ssid, password, [auth], [timeout_ms]) -> boolean, string|nil
 // auth: wifi.AUTH_OPEN, wifi.AUTH_WPA2 (default), wifi.AUTH_WPA3
@@ -177,8 +171,6 @@ static int l_wifi_is_connected(lua_State* L) {
     lua_pushboolean(L, wifi_get_status() == WIFI_STATUS_UP);
     return 1;
 }
-
-// network Information Functions
 
 // wifi.getIP() -> string|nil
 // get current IP addres or nil if not connected

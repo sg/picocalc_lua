@@ -178,11 +178,11 @@ void wifi_scan_free(void) {
 
 int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint32_t timeout_ms) {
     if (!wifi_initialized) {
-        return -1;
+        return WIFI_STATUS_FAIL;
     }
 
     if (ssid == NULL) {
-        return -1;
+        return WIFI_STATUS_FAIL;
     }
 
     // map our auth enum to cyw43 auth type
@@ -211,6 +211,89 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
         result = cyw43_arch_wifi_connect_timeout_ms(ssid, pw, cyw_auth, timeout_ms);
     } else {
         result = cyw43_arch_wifi_connect_blocking(ssid, pw, cyw_auth);
+    }
+
+    // check actual connection status - the SDK can return spurious errors
+    // (like ERR_WOULDBLOCK/-7) even when connection is in progress or failing
+    wifi_status_t status = wifi_get_status();
+
+    // if status is already a definite failure, return it immediately
+    if (status == WIFI_STATUS_FAIL ||
+        status == WIFI_STATUS_NONET ||
+        status == WIFI_STATUS_BADAUTH) {
+        connected_ssid[0] = '\0';
+        return (int)status;
+    }
+
+    // if SDK returned an error but status isn't definitive yet, wait for status to settle
+    // this handles cases where auth failure hasn't propagated to status yet
+    if (result != 0 && status != WIFI_STATUS_JOIN && status != WIFI_STATUS_NOIP) {
+        // wait up to 2 seconds for status to update with the real error
+        absolute_time_t settle_deadline = make_timeout_time_ms(2000);
+        while (!time_reached(settle_deadline)) {
+            cyw43_arch_poll();
+            sleep_ms(100);
+            status = wifi_get_status();
+
+            // check for definite failure states
+            if (status == WIFI_STATUS_FAIL ||
+                status == WIFI_STATUS_NONET ||
+                status == WIFI_STATUS_BADAUTH) {
+                connected_ssid[0] = '\0';
+                return (int)status;
+            }
+            // check if connection actually succeeded
+            if (status == WIFI_STATUS_UP) {
+                result = 0;
+                break;
+            }
+            // if we transitioned to JOIN/NOIP, break out to main wait loop
+            if (status == WIFI_STATUS_JOIN || status == WIFI_STATUS_NOIP) {
+                break;
+            }
+        }
+    }
+
+    // if SDK reported success or we're in an intermediate connected state,
+    // wait for full connection (STATUS_UP) or definite failure
+    if (result == 0 || status == WIFI_STATUS_JOIN || status == WIFI_STATUS_NOIP) {
+        // calculate remaining timeout for DHCP wait
+        // use 10 seconds for DHCP if we still have time, or minimum 5 seconds
+        uint32_t dhcp_timeout_ms = (timeout_ms > 10000) ? 10000 : 5000;
+        absolute_time_t deadline = make_timeout_time_ms(dhcp_timeout_ms);
+
+        while (!time_reached(deadline)) {
+            cyw43_arch_poll();
+            status = wifi_get_status();
+
+            if (status == WIFI_STATUS_UP) {
+                // fully connected with IP address
+                result = 0;
+                break;
+            } else if (status == WIFI_STATUS_FAIL ||
+                       status == WIFI_STATUS_NONET ||
+                       status == WIFI_STATUS_BADAUTH) {
+                // definite failure
+                result = (int)status;
+                break;
+            }
+            // still in JOIN or NOIP state, keep waiting
+            sleep_ms(100);
+        }
+
+        // final status check after loop
+        status = wifi_get_status();
+        if (status == WIFI_STATUS_UP) {
+            result = 0;
+        } else if (status == WIFI_STATUS_FAIL ||
+                   status == WIFI_STATUS_NONET ||
+                   status == WIFI_STATUS_BADAUTH) {
+            result = (int)status;
+        } else if (status == WIFI_STATUS_JOIN || status == WIFI_STATUS_NOIP) {
+            // timed out waiting for DHCP but WiFi is associated
+            // return timeout error but still store SSID since we're partially connected
+            result = WIFI_STATUS_FAIL;
+        }
     }
 
     // store SSID on success, clear on failure
