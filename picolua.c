@@ -15,6 +15,7 @@
 #include "drivers/fs.h"
 #include "drivers/sound.h"
 #include "drivers/multicore.h"
+#include "drivers/wifi.h"
 #include "picolua-api/sys.h"
 
 #include "corelua.h"
@@ -38,6 +39,10 @@ int main() {
 			}
 			atomic_store(&fs_needs_remount, false);
 		}
+
+		// process wi-fi background tasks
+		wifi_poll();
+
 		#if PICO_RP2040
 		//sleep_ms(10);
 		#elif PICO_RP2350

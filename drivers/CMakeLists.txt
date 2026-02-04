@@ -21,6 +21,9 @@ target_sources(drivers INTERFACE
 	fs.c
 	sound.c
 	multicore.c
+	wifi.c
+	socket.c
+	tls.c
 )
 
 target_link_libraries(drivers INTERFACE
@@ -29,6 +32,7 @@ target_link_libraries(drivers INTERFACE
 	hardware_pio
 	hardware_i2c
 	rp2040-psram
+	pico_cyw43_arch_lwip_threadsafe_background
 )
 
 target_include_directories(drivers INTERFACE

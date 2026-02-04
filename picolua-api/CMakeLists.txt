@@ -18,6 +18,8 @@ target_sources(picolua-api INTERFACE
 	draw.c
 	term.c
 	sound.c
+	wifi.c
+	socket.c
 )
 
 target_link_libraries(picolua-api INTERFACE

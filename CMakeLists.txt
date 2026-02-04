@@ -12,7 +12,7 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-set(PICO_BOARD pico2 CACHE STRING "Board type")
+set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -50,8 +50,8 @@ add_executable(picolua
 pico_enable_stdio_usb(picolua 0)
 pico_enable_stdio_uart(picolua 0)
 
-target_link_libraries(picolua 
-	pico_stdlib 
+target_link_libraries(picolua
+	pico_stdlib
 	hardware_irq
 	hardware_pwm
 	hardware_gpio
@@ -64,7 +64,10 @@ target_link_libraries(picolua
 	#hardware_exception
 	#hardware_pio
 	pico_multicore
-	lua 
+	pico_cyw43_arch_lwip_threadsafe_background
+	pico_lwip_mbedtls
+	pico_mbedtls
+	lua
 	drivers
 	pico_fatfs
 	kilo
@@ -81,6 +84,9 @@ target_compile_definitions(picolua PRIVATE
 	PSRAM_PIN_MOSI=2
 	PSRAM_PIN_MISO=3
 )
+
+# Include directory for lwipopts.h
+target_include_directories(picolua PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 pico_add_extra_outputs(picolua)
 
