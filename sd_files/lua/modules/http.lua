@@ -7,7 +7,7 @@
   in the clear ;)
 
   Supports chunked transfer-encoding and
-  optimizes memory usage devices.
+  optimizes memory usage for picocalc devices.
   Max buffered response size is 32KB, but larger
   responses can be streamed to file or console.
 
