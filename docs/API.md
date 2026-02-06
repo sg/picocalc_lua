@@ -113,6 +113,47 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 		- [`presets`](#presets)
 		- [`drums`](#drums)
 		- [`tableModes`](#tablemodes)
+- [`wifi` - Wi-Fi networking](#wifi---wi-fi-networking)
+        - [`init([country])`](#initcountry)
+        - [`isInitialized()`](#isinitialized)
+        - [`scan()`](#scan)
+        - [`connect(ssid, password, [auth], [timeout])`](#connectssid-password-auth-timeout)
+        - [`disconnect()`](#disconnect)
+        - [`status()`](#status)
+        - [`isConnected()`](#isconnected)
+        - [`getIP()`](#getip)
+        - [`getGateway()`](#getgateway)
+        - [`getNetmask()`](#getnetmask)
+        - [`getInfo()`](#getinfo)
+        - [Constants](#constants-4)
+                - [Authentication Modes](#authentication-modes)
+                - [Status Codes](#status-codes)
+- [`socket` - TCP/UDP/TLS sockets](#socket---tcpudptls-sockets)
+        - [`tcp()`](#tcp)
+        - [`udp()`](#udp)
+        - [`tls()`](#tls)
+        - [`dns.resolve(hostname)`](#dnsresolvehostname)
+    - [`ping(hostname, timeout)`](#ping)
+        - [`Socket:connect(host, port, [timeout])`](#socketconnecthost-port-timeout)
+        - [`Socket:send(data)`](#socketsenddata)
+        - [`Socket:receive([size], [timeout])`](#socketreceivesize-timeout)
+        - [`Socket:close()`](#socketclose)
+        - [`Socket:settimeout(seconds)`](#socketsettimeoutseconds)
+        - [`Socket:available()`](#socketavailable)
+        - [`Socket:isconnected()`](#socketisconnected)
+        - [`Socket:bind(port, [address])`](#socketbindport-address)
+        - [`Socket:listen([backlog])`](#socketlistenbacklog)
+        - [`Socket:accept([timeout])`](#socketaccepttimeout)
+        - [`Socket:sendto(data, host, port)`](#socketsendtodata-host-port)
+        - [`Socket:receivefrom([size], [timeout])`](#socketreceivefromsize-timeout)
+        - [TLS Socket Methods](#tls-socket-methods)
+        - [Constants](#constants-5)
+- [`http` - HTTP client (Lua library)](#http---http-client-lua-library)
+        - [`http.request(url, [options])`](#httprequesturl-options)
+        - [`http.get(url, [options])`](#httpgeturl-options)
+        - [`http.post(url, body, [content_type], [options])`](#httpposturl-body-content_type-options)
+        - [`http.urlencode(str)`](#httpurlencodestr)
+        - [`http.encode_params(params)`](#httpencode_paramsparams)
 
 
 # `sys` - System functions
@@ -991,3 +1032,429 @@ Instrument objects have the following attributes which can be read and set:
 - `oneShot` - Sweeps the wavetable from start to end, then stops sweep at the end
 - `pingPong` - Sweeps the wavetable, switching directions whenever end or start are reached
 - `loop` - Sweeps the wavetable in a single direction, resetting the sweep from the other side of the loop once the end is reached
+
+# `wifi` - Wi-Fi networking
+
+## `init([country])`
+Initialize the Wi-Fi hardware. Must be called before any other Wi-Fi functions.
+
+**Parameters**
+1. `country : string` - Optional 2-letter country code (e.g., "US", "GB", "DE").
+
+**Returns**
+1. `boolean` - Whether initialization was successful
+
+
+## `isInitialized()`
+Check if Wi-Fi has been initialized
+
+**Returns**
+1. `boolean` - Whether Wi-Fi is initialized
+
+## `scan()`
+Perform a scan for available Wi-Fi networks
+
+**Returns**
+1. `table | nil` - Array of network tables, or nil on failure
+   * `ssid : string` - Network name
+   * `rssi : number` - Signal strength in dBm (typically -30 to -90)
+   * `channel : number` - Wi-Fi channel (1-14)
+   * `secure : boolean` - Whether authentication is required
+   * `authMode : number` - Raw authentication mode value
+   * `bssid : string` - MAC address as "XX:XX:XX:XX:XX:XX"
+2. `string` - Error message if scan failed
+
+## `connect(ssid, password, [auth], [timeout])`
+Connect to a Wi-Fi network
+
+**Parameters**
+1. `ssid : string` - The network name to connect to
+2. `password : string` - The network password (empty string for open networks)
+3. `auth : number` - Authentication type: `wifi.AUTH_OPEN`, `wifi.AUTH_WPA2` (default), or `wifi.AUTH_WPA3`
+4. `timeout : number` - Connection timeout in milliseconds, defaults to 30000
+
+**Returns**
+1. `boolean` - Whether connection was successful
+2. `string` - Error message if connection failed
+
+## `disconnect()`
+Disconnect from the current Wi-Fi network
+
+## `status()`
+Get the current connection status
+
+**Returns**
+1. `number` - One of the status constants: `wifi.STATUS_DOWN`, `wifi.STATUS_JOIN`, `wifi.STATUS_NOIP`, `wifi.STATUS_UP`, `wifi.STATUS_FAIL`, `wifi.STATUS_NONET`, or `wifi.STATUS_BADAUTH`
+
+## `isConnected()`
+Check if connected to a network with an IP address
+
+**Returns**
+1. `boolean` - Whether fully connected with IP address
+
+## `getIP()`
+Get the current IP address
+
+**Returns**
+1. `string | nil` - IP address or nil if not connected
+
+## `getGateway()`
+Get the gateway IP address
+
+**Returns**
+1. `string | nil` - Gateway IP address or nil if not connected
+
+## `getNetmask()`
+Get the subnet mask
+
+**Returns**
+1. `string | nil` - Subnet mask or nil if not connected
+
+## `getInfo()`
+Get all network information as a table
+
+**Returns**
+1. `table | nil` - Network information table, or nil if not connected
+   * `ip : string` - IP address
+   * `ssid : string` - SSID of connected wifi network
+   * `gateway : string` - Gateway address
+   * `netmask : string` - Subnet mask
+
+## Constants
+
+### Authentication Modes
+
+* `AUTH_OPEN` - Open network (no password)
+* `AUTH_WPA2` - WPA2-PSK
+* `AUTH_WPA3` - WPA3-SAE
+
+### Status Codes
+
+* `STATUS_DOWN` - Link down, not connected
+* `STATUS_JOIN` - Associated with access point
+* `STATUS_NOIP` - Connected, waiting for DHCP
+* `STATUS_UP` - Fully connected with IP address
+* `STATUS_FAIL` - Connection failed
+* `STATUS_NONET` - Network not found
+* `STATUS_BADAUTH` - Authentication failed
+
+# `socket` - TCP/UDP/TLS sockets
+
+The socket module provides TCP, UDP, and TLS network communication. Requires Wi-Fi to be connected first.
+
+## `tcp()`
+Create a new TCP socket
+
+**Returns**
+1. `Socket` - A new TCP socket object
+2. `string` - Error message if creation failed
+
+## `udp()`
+Create a new UDP socket
+
+**Returns**
+1. `Socket` - A new UDP socket object
+2. `string` - Error message if creation failed
+
+## `tls()`
+Create a new TLS socket for encrypted connections (e.g., HTTPS). Certificate verification is disabled.
+
+**Returns**
+1. `TLSSocket` - A new TLS socket object
+2. `string` - Error message if creation failed
+
+## `ping(hostname|IP, timeout)`
+Send an ICMP echo request packet to host
+
+**Parameters**
+1. `hostname|IP : string` - The hostname or IP to ping
+2. `timeout: int` - timeout in milliseconds
+
+**Returns**
+1. `table | nil` - A table holding the ping state fields, or nil if socket creation failed
+   * `success : bool` - if a reply was recieved
+   * `time : number` - milliseconds elapsed
+   * `ttl : number` - time to live
+   * `ip : string` - IP of host (after successful dns lookup)
+2. `string` - Error message if socket creation failed
+
+## `dns.resolve(hostname)`
+Resolve a hostname to an IP address (doesn't currently support reverse loo-ups)
+
+**Parameters**
+1. `hostname : string` - The hostname to resolve
+
+**Returns**
+1. `string | nil` - The resolved IP address, or nil on failure
+2. `string` - Error message if resolution failed
+
+## `Socket:connect(host, port, [timeout])`
+Connect a TCP socket to a remote host
+
+**Parameters**
+1. `host : string` - The hostname or IP address to connect to
+2. `port : number` - The port number (1-65535)
+3. `timeout : number` - Connection timeout in milliseconds, defaults to 30000
+
+**Returns**
+1. `boolean` - Whether connection was successful
+2. `string` - Error message if connection failed
+
+## `Socket:send(data)`
+Send data through a connected socket
+
+**Parameters**
+1. `data : string` - The data to send
+
+**Returns**
+1. `number | nil` - Number of bytes sent, or nil on error
+2. `string` - Error message if send failed
+
+## `Socket:receive([size], [timeout])`
+Receive data from a connected socket
+
+**Parameters**
+1. `size : number` - Maximum bytes to receive, defaults to 1024 (max 8192)
+2. `timeout : number` - Receive timeout in milliseconds
+
+**Returns**
+1. `string | nil` - The received data, or nil on error/timeout
+2. `string` - Error message if receive failed
+
+## `Socket:close()`
+Close the socket and free resources
+
+## `Socket:settimeout(seconds)`
+Set the default timeout for socket operations
+
+**Parameters**
+1. `seconds : number` - Timeout in seconds (0 for blocking)
+
+## `Socket:available()`
+Check how many bytes are available to read without blocking
+
+**Returns**
+1. `number` - Number of bytes available in the receive buffer
+
+## `Socket:isconnected()`
+Check if the socket is currently connected
+
+**Returns**
+1. `boolean` - Whether the socket is connected
+
+## `Socket:bind(port, [address])`
+Bind a socket to a local port (for servers or UDP)
+
+**Parameters**
+1. `port : number` - The port number to bind to (1-65535)
+2. `address : string` - Local address to bind to, defaults to all interfaces
+
+**Returns**
+1. `boolean` - Whether bind was successful
+2. `string` - Error message if bind failed
+
+## `Socket:listen([backlog])`
+Start listening for incoming TCP connections
+
+**Parameters**
+1. `backlog : number` - Maximum pending connections, defaults to 5
+
+**Returns**
+1. `boolean` - Whether listen was successful
+2. `string` - Error message if listen failed
+
+## `Socket:accept([timeout])`
+Accept an incoming TCP connection
+
+**Parameters**
+1. `timeout : number` - Accept timeout in milliseconds (0 for blocking)
+
+**Returns**
+1. `Socket | nil` - New socket for the client connection, or nil on timeout/error
+2. `string` - Error message if accept failed
+
+## `Socket:sendto(data, host, port)`
+Send a UDP datagram to a specific address
+
+**Parameters**
+1. `data : string` - The data to send
+2. `host : string` - Destination hostname or IP address
+3. `port : number` - Destination port number (1-65535)
+
+**Returns**
+1. `number | nil` - Number of bytes sent, or nil on error
+2. `string` - Error message if send failed
+
+## `Socket:receivefrom([size], [timeout])`
+Receive a UDP datagram and get sender information
+
+**Parameters**
+1. `size : number` - Maximum bytes to receive, defaults to 1024 (max 8192)
+2. `timeout : number` - Receive timeout in milliseconds
+
+**Returns**
+1. `string | nil` - The received data, or nil on error/timeout
+2. `string` - Sender IP address (or error message on failure)
+3. `number` - Sender port number
+
+## TLS Socket Methods
+
+TLS sockets support a subset of the regular socket methods, designed for HTTPS client connections.
+
+### `TLSSocket:connect(host, port, [timeout])`
+Connect to a server with TLS encryption (blocking, includes TLS handshake)
+
+**Parameters**
+1. `host : string` - The hostname or IP address to connect to
+2. `port : number` - The port number (typically 443 for HTTPS)
+3. `timeout : number` - Connection timeout in milliseconds, defaults to 30000
+
+**Returns**
+1. `boolean` - Whether connection and TLS handshake succeeded
+2. `string` - Error message if connection failed
+
+### `TLSSocket:send(data)`
+Send data through the encrypted connection
+
+**Parameters**
+1. `data : string` - The data to send
+
+**Returns**
+1. `number | nil` - Number of bytes sent, or nil on error
+2. `string` - Error message if send failed
+
+### `TLSSocket:receive([size], [timeout])`
+Receive data from the encrypted connection
+
+**Parameters**
+1. `size : number` - Maximum bytes to receive, defaults to 1024 (max 8192)
+2. `timeout : number` - Receive timeout in milliseconds
+
+**Returns**
+1. `string | nil` - The received data, or nil on error/timeout
+2. `string` - Error message if receive failed
+
+### `TLSSocket:close()`
+Close the TLS connection and free resources
+
+### `TLSSocket:settimeout(seconds)`
+Set the default timeout for operations
+
+**Parameters**
+1. `seconds : number` - Timeout in seconds
+
+### `TLSSocket:available()`
+Check how many bytes are available to read
+
+**Returns**
+1. `number` - Number of bytes available in the receive buffer
+
+### `TLSSocket:isconnected()`
+Check if the TLS connection is established
+
+**Returns**
+1. `boolean` - Whether connected with completed TLS handshake
+
+## Constants
+
+* `TCP` - Socket type constant for TCP
+* `UDP` - Socket type constant for UDP
+* `_VERSION` - Module version string
+
+
+# `http` - HTTP client
+
+The HTTP module is a Lua library that provides a simple HTTP/1.1 client built on top of the socket module. It supports both HTTP and HTTPS (via TLS sockets). Assuming you have an SD card with the expected directory structure and Lua files, load with `local http = require("lua/modules/http")`.
+
+## `http.request(url, [options])`
+Perform an HTTP request
+
+**Parameters**
+1. `url : string` - The full URL to request (http:// or https://)
+2. `options : table` - Optional configuration:
+   * `method : string` - HTTP method, GET or POST (defaults to GET)
+   * `headers : table` - Custom headers as key-value pairs
+   * `body : string` - Request body for POST
+   * `timeout : number` - Request timeout in seconds, defaults to 30
+   * `follow_redirects : boolean` - Follow redirects, defaults to true
+
+**Returns**
+1. `table | nil` - Response table, or nil on error:
+   * `status : number` - HTTP status code (200, 404, etc.)
+   * `reason : string` - Status reason phrase
+   * `headers : table` - Response headers (lowercase keys)
+   * `body : string` - Response body
+2. `string` - Error message if request failed
+
+**Example**
+```lua
+local http = require("lua/modules/http")
+
+local response, err = http.request("https://api.example.com/data")
+if response then
+    print("Status:", response.status)
+    print("Body:", response.body)
+else
+    print("Error:", err)
+end
+```
+
+## `http.get(url, [options])`
+Simplified function for GET requests
+
+**Parameters**
+1. `url : string` - The URL to fetch
+2. `options : table` - Same options as `request()` (method is set to GET)
+
+**Returns**
+Same as `request()`
+
+## `http.post(url, body, [content_type], [options])`
+Simplified function for POST requests
+
+**Parameters**
+1. `url : string` - The URL to post to
+2. `body : string` - The request body
+3. `content_type : string` - Content-Type header, defaults to "application/x-www-form-urlencoded"
+4. `options : table` - Additional options (method is set to POST)
+
+**Returns**
+Same as `request()`
+
+**Example**
+```lua
+local http = require("lua/modules/http")
+
+-- Post form data
+local params = http.encode_params({username = "user", password = "pass"})
+local response = http.post("https://example.com/login", params)
+
+-- Post JSON
+local response = http.post("https://api.example.com/data",
+    '{"key": "value"}',
+    "application/json")
+```
+
+## `http.urlencode(str)`
+URL-encode a string
+
+**Parameters**
+1. `str : string` - The string to encode
+
+**Returns**
+1. `string` - URL-encoded string
+
+## `http.encode_params(params)`
+Encode a table of parameters for form submission
+
+**Parameters**
+1. `params : table` - Key-value pairs to encode
+
+**Returns**
+1. `string` - URL-encoded query string (e.g., "key1=value1&key2=value2")
+
+## Settings
+
+* `http.TIMEOUT` - Set timeout in seconds (default is 30)
+* `http.MAX_REDIRECTS` - Maximum redirects to follow (default is 5)
+* `http.USER_AGENT` - Set User-Agent header
