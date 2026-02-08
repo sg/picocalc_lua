@@ -97,9 +97,22 @@ static int ansi_len_to_lcd_y(int len) {
 
 void term_scroll(int lines) {
 	if (lines != ansi.scroll) {
-		ansi.scroll = lines;
-		term_erase_line(lines + font.term_height);
-		lcd_scroll(lines * font.glyph_height);
+		int buffer_mode = lcd_get_buffer_mode();
+		if (buffer_mode != LCD_BUFFERMODE_DIRECT) {
+			// Buffer mode: software scroll actually shifts pixels,
+			// so we need to adjust ansi.y to stay in valid range
+			int scroll_delta = lines - ansi.scroll;
+			lcd_scroll(scroll_delta * font.glyph_height);
+			// Adjust Y position since content has been shifted
+			ansi.y -= scroll_delta;
+			// Reset scroll tracking since content is actually shifted
+			ansi.scroll = 0;
+		} else {
+			// Direct mode: use hardware scroll (virtual scroll)
+			ansi.scroll = lines;
+			term_erase_line(lines + font.term_height);
+			lcd_scroll(lines * font.glyph_height);
+		}
 	}
 }
 
