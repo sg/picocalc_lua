@@ -1,0 +1,320 @@
+=== BotWarz Debug Log ===
+[0000] Match started
+[0000] Bot1: Spinner at (50,230) heading 315, ammo=50 energy=100
+[0000] Bot2: Hunter at (230,50) heading 135, ammo=50 energy=100
+[0076] Hunter scanAt(225, arc=60): FOUND at dist=138 ang=233
+[0078] Hunter scanAt(245, arc=60): FOUND at dist=136 ang=231
+[0090] Hunter scanAt(195, arc=60): FOUND at dist=125 ang=225
+[0092] Hunter scanAt(215, arc=60): FOUND at dist=122 ang=224
+[0094] Hunter scanAt(235, arc=60): FOUND at dist=116 ang=222
+[0099] Spinner scanAt(19, arc=45): FOUND at dist=101 ang=39
+[0099] Spinner fireAt: SUCCESS at angle 39 from (59,210)
+[0100] STATUS Spinner: HP=100 ammo=49 missiles=3 energy=94 pos=(49,222)
+[0100] STATUS Hunter: HP=100 ammo=50 missiles=3 energy=100 pos=(110,144)
+[0100] Spinner scanAt(27, arc=45): FOUND at dist=98 ang=38
+[0101] Spinner scanAt(35, arc=45): FOUND at dist=96 ang=37
+[0102] Spinner scanAt(43, arc=45): FOUND at dist=94 ang=36
+[0103] Spinner scanAt(51, arc=45): FOUND at dist=92 ang=35
+[0106] Hunter scanAt(185, arc=60): FOUND at dist=86 ang=210
+[0108] Hunter scanAt(205, arc=60): FOUND at dist=82 ang=206
+[0110] Hunter scanAt(225, arc=60): FOUND at dist=78 ang=199
+[0122] Hunter scanAt(175, arc=60): FOUND at dist=77 ang=178
+[0124] Hunter scanAt(195, arc=60): FOUND at dist=78 ang=176
+[0136] Hunter scanAt(145, arc=60): FOUND at dist=73 ang=166
+[0137] Spinner scanAt(323, arc=45): FOUND at dist=73 ang=344
+[0137] Spinner fireAt: SUCCESS at angle 344 from (45,214)
+[0138] Spinner scanAt(331, arc=45): FOUND at dist=72 ang=343
+[0138] Hunter scanAt(165, arc=60): FOUND at dist=72 ang=163
+[0139] Spinner scanAt(339, arc=45): FOUND at dist=71 ang=342
+[0140] Spinner scanAt(347, arc=45): FOUND at dist=70 ang=340
+[0140] Hunter scanAt(185, arc=60): FOUND at dist=70 ang=160
+[0141] Spinner scanAt(355, arc=45): FOUND at dist=69 ang=338
+[0151] Hunter scanAt(123, arc=60): FOUND at dist=64 ang=139
+[0152] Hunter scanAt(158, arc=60): FOUND at dist=65 ang=139
+[0161] Hunter scanAt(129, arc=60): FOUND at dist=81 ang=142
+[0162] Hunter scanAt(164, arc=60): FOUND at dist=84 ang=143
+[0163] Hunter scanAt(169, arc=60): FOUND at dist=87 ang=145
+[0173] Hunter scanAt(137, arc=60): FOUND at dist=108 ang=157
+[0175] Hunter scanAt(177, arc=60): FOUND at dist=112 ang=160
+[0183] Spinner scanAt(331, arc=45): FOUND at dist=118 ang=351
+[0183] Spinner fireAt: SUCCESS at angle 351 from (46,213)
+[0184] Spinner scanAt(339, arc=45): FOUND at dist=118 ang=352
+[0185] Spinner scanAt(347, arc=45): FOUND at dist=118 ang=352
+[0186] Spinner scanAt(355, arc=45): FOUND at dist=118 ang=353
+[0187] Spinner scanAt(3, arc=45): FOUND at dist=118 ang=354
+[0187] Hunter scanAt(147, arc=60): FOUND at dist=118 ang=174
+[0188] Spinner scanAt(11, arc=45): FOUND at dist=118 ang=355
+[0189] Hunter scanAt(187, arc=60): FOUND at dist=118 ang=176
+[0200] STATUS Spinner: HP=100 ammo=47 missiles=3 energy=99 pos=(58,219)
+[0200] STATUS Hunter: HP=100 ammo=50 missiles=3 energy=100 pos=(67,101)
+[0201] Hunter scanAt(157, arc=60): FOUND at dist=118 ang=185
+[0203] Hunter scanAt(197, arc=60): FOUND at dist=118 ang=187
+[0216] Hunter scanAt(199, arc=60): FOUND at dist=119 ang=200
+[0229] Hunter scanAt(201, arc=60): FOUND at dist=102 ang=217
+[0231] Hunter scanAt(241, arc=60): FOUND at dist=96 ang=220
+[0235] Spinner scanAt(27, arc=45): FOUND at dist=83 ang=45
+[0235] Spinner fireAt: SUCCESS at angle 45 from (61,210)
+[0236] Spinner scanAt(35, arc=45): FOUND at dist=80 ang=46
+[0237] Spinner scanAt(43, arc=45): FOUND at dist=78 ang=47
+[0238] Spinner scanAt(51, arc=45): FOUND at dist=75 ang=47
+[0239] Spinner scanAt(59, arc=45): FOUND at dist=72 ang=48
+[0240] Spinner scanAt(67, arc=45): FOUND at dist=69 ang=48
+[0240] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 100->90)
+[0240] Hunter fireAt: SUCCESS at angle 76 from (119,170)
+[0266] Hunter scanAt(297, arc=60): FOUND at dist=35 ang=321
+[0268] Hunter scanAt(337, arc=60): FOUND at dist=38 ang=325
+[0280] Hunter scanAt(337, arc=60): FOUND at dist=46 ang=355
+[0282] Hunter scanAt(17, arc=60): FOUND at dist=47 ang=2
+[0295] Hunter scanAt(19, arc=60): FOUND at dist=44 ang=48
+[0297] Hunter scanAt(59, arc=60): FOUND at dist=44 ang=56
+[0300] STATUS Spinner: HP=100 ammo=46 missiles=3 energy=99 pos=(62,227)
+[0300] STATUS Hunter: HP=90 ammo=49 missiles=3 energy=100 pos=(24,243)
+[0310] Spinner scanAt(267, arc=45): FOUND at dist=35 ang=285
+[0310] Spinner fireAt: SUCCESS at angle 285 from (40,228)
+[0311] Spinner scanAt(275, arc=45): FOUND at dist=35 ang=289
+[0311] Hunter scanAt(93, arc=60): FOUND at dist=35 ang=109
+[0311] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 90->80)
+[0311] Hunter fireAt: SUCCESS at angle 327 from (13,206)
+[0312] Spinner scanAt(283, arc=45): FOUND at dist=35 ang=292
+[0313] Spinner scanAt(291, arc=45): FOUND at dist=35 ang=299
+[0314] Spinner scanAt(299, arc=45): FOUND at dist=35 ang=305
+[0315] Spinner scanAt(307, arc=45): FOUND at dist=36 ang=311
+[0316] Spinner scanAt(315, arc=45): FOUND at dist=37 ang=316
+[0317] Spinner scanAt(323, arc=45): FOUND at dist=38 ang=321
+[0318] Spinner scanAt(331, arc=45): FOUND at dist=40 ang=326
+[0319] Spinner scanAt(339, arc=45): FOUND at dist=42 ang=329
+[0320] Spinner scanAt(347, arc=45): FOUND at dist=44 ang=332
+[0321] Spinner scanAt(355, arc=45): FOUND at dist=46 ang=335
+[0333] Hunter scanAt(142, arc=60): FOUND at dist=81 ang=168
+[0335] Hunter scanAt(182, arc=60): FOUND at dist=86 ang=169
+[0347] Hunter scanAt(152, arc=60): FOUND at dist=113 ang=181
+[0349] Hunter scanAt(192, arc=60): FOUND at dist=117 ang=184
+[0362] Hunter scanAt(194, arc=60): FOUND at dist=126 ang=203
+[0364] Hunter scanAt(234, arc=60): FOUND at dist=125 ang=206
+[0368] Spinner scanAt(11, arc=45): FOUND at dist=121 ang=33
+[0368] Spinner fireAt: SUCCESS at angle 33 from (57,210)
+[0369] Spinner scanAt(19, arc=45): FOUND at dist=120 ang=34
+[0370] Spinner scanAt(27, arc=45): FOUND at dist=118 ang=35
+[0371] Spinner scanAt(35, arc=45): FOUND at dist=117 ang=36
+[0372] Spinner scanAt(43, arc=45): FOUND at dist=116 ang=37
+[0373] Spinner scanAt(51, arc=45): FOUND at dist=114 ang=37
+[0374] Spinner scanAt(59, arc=45): FOUND at dist=113 ang=38
+[0376] Hunter scanAt(204, arc=60): FOUND at dist=110 ang=220
+[0378] Hunter scanAt(244, arc=60): FOUND at dist=107 ang=222
+[0390] Hunter scanAt(214, arc=60): FOUND at dist=92 ang=229
+[0392] Hunter scanAt(254, arc=60): FOUND at dist=89 ang=231
+[0400] STATUS Spinner: HP=100 ammo=44 missiles=3 energy=99 pos=(55,232)
+[0400] STATUS Hunter: HP=80 ammo=48 missiles=3 energy=100 pos=(122,190)
+[0404] Hunter scanAt(224, arc=60): FOUND at dist=74 ang=241
+[0406] Hunter scanAt(264, arc=60): FOUND at dist=71 ang=243
+[0407] Hunter scanAt(234, arc=30): FOUND at dist=69 ang=245
+[0407] Hunter fireAt: SUCCESS at angle 245 from (97,206)
+[0408] Hunter scanAt(243, arc=30): FOUND at dist=67 ang=245
+[0408] Hunter canFire: NO - cooldown (9 ticks)
+[0409] Hunter scanAt(245, arc=30): FOUND at dist=65 ang=246
+[0410] Hunter scanAt(245, arc=30): FOUND at dist=63 ang=247
+[0411] Hunter scanAt(246, arc=30): FOUND at dist=61 ang=248
+[0412] Hunter scanAt(247, arc=30): FOUND at dist=58 ang=249
+[0412] HIT: Hunter's cannon hit Spinner for 10 dmg (health: 100->90)
+[0412] Spinner fireAt: SUCCESS at angle 11 from (52,208)
+[0413] Hunter scanAt(248, arc=30): FOUND at dist=56 ang=250
+[0414] Hunter scanAt(249, arc=30): FOUND at dist=52 ang=253
+[0415] Hunter scanAt(250, arc=30): FOUND at dist=49 ang=256
+[0416] Hunter scanAt(253, arc=30): FOUND at dist=45 ang=259
+[0417] Hunter scanAt(256, arc=30): FOUND at dist=41 ang=262
+[0417] Hunter fireAt: SUCCESS at angle 262 from (78,209)
+[0418] Hunter scanAt(259, arc=30): FOUND at dist=37 ang=265
+[0418] Hunter canFire: NO - cooldown (9 ticks)
+[0418] HIT: Hunter's cannon hit Spinner for 10 dmg (health: 90->80)
+[0418] Spinner canFire: NO - cooldown (4 ticks)
+[0419] Hunter scanAt(262, arc=30): FOUND at dist=32 ang=269
+[0420] Hunter scanAt(265, arc=30): FOUND at dist=28 ang=273
+[0421] Hunter scanAt(269, arc=30): FOUND at dist=24 ang=278
+[0422] Hunter scanAt(273, arc=30): FOUND at dist=20 ang=283
+[0423] Hunter scanAt(278, arc=30): FOUND at dist=15 ang=290
+[0426] Hunter scanAt(22, arc=60): FOUND at dist=4 ang=4
+[0428] Hunter scanAt(62, arc=60): FOUND at dist=10 ang=89
+[0430] Hunter scanAt(102, arc=60): FOUND at dist=19 ang=107
+[0432] Hunter scanAt(142, arc=60): FOUND at dist=28 ang=118
+[0434] Hunter scanAt(152, arc=60): FOUND at dist=36 ang=127
+[0446] Hunter scanAt(152, arc=60): FOUND at dist=74 ang=167
+[0448] Hunter scanAt(192, arc=60): FOUND at dist=77 ang=172
+[0450] Hunter scanAt(202, arc=60): FOUND at dist=79 ang=178
+[0459] Spinner scanAt(359, arc=45): FOUND at dist=75 ang=17
+[0459] Spinner fireAt: SUCCESS at angle 17 from (56,206)
+[0460] Spinner scanAt(7, arc=45): FOUND at dist=74 ang=18
+[0461] Spinner scanAt(15, arc=45): FOUND at dist=73 ang=19
+[0461] Hunter scanAt(170, arc=60): FOUND at dist=73 ang=199
+[0462] Spinner scanAt(23, arc=45): FOUND at dist=72 ang=19
+[0463] Spinner scanAt(31, arc=45): FOUND at dist=70 ang=20
+[0463] Hunter scanAt(210, arc=60): FOUND at dist=70 ang=200
+[0464] Spinner scanAt(39, arc=45): FOUND at dist=69 ang=20
+[0475] Hunter scanAt(180, arc=60): FOUND at dist=69 ang=193
+[0477] Hunter scanAt(220, arc=60): FOUND at dist=73 ang=192
+[0489] Hunter scanAt(190, arc=60): FOUND at dist=101 ang=206
+[0491] Hunter scanAt(230, arc=60): FOUND at dist=104 ang=212
+[0500] STATUS Spinner: HP=80 ammo=42 missiles=3 energy=99 pos=(54,233)
+[0500] STATUS Hunter: HP=80 ammo=46 missiles=3 energy=100 pos=(141,175)
+[0504] Hunter scanAt(232, arc=60): FOUND at dist=99 ang=247
+[0506] Hunter scanAt(272, arc=60): FOUND at dist=94 ang=254
+[0514] Spinner scanAt(79, arc=45): FOUND at dist=68 ang=96
+[0514] Spinner fireAt: SUCCESS at angle 96 from (86,203)
+[0515] Spinner scanAt(87, arc=45): FOUND at dist=64 ang=98
+[0516] Spinner scanAt(95, arc=45): FOUND at dist=61 ang=100
+[0517] Spinner scanAt(103, arc=45): FOUND at dist=57 ang=102
+[0518] Spinner scanAt(111, arc=45): FOUND at dist=53 ang=103
+[0519] Spinner scanAt(119, arc=45): FOUND at dist=50 ang=104
+[0519] Hunter scanAt(274, arc=60): FOUND at dist=50 ang=284
+[0519] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 80->70)
+[0519] Hunter fireAt: SUCCESS at angle 191 from (128,234)
+[0520] Spinner scanAt(127, arc=45): FOUND at dist=46 ang=105
+[0540] Hunter scanAt(329, arc=60): FOUND at dist=27 ang=338
+[0541] Hunter scanAt(4, arc=60): FOUND at dist=28 ang=338
+[0552] Hunter scanAt(344, arc=60): FOUND at dist=53 ang=3
+[0554] Hunter scanAt(24, arc=60): FOUND at dist=58 ang=10
+[0568] Hunter scanAt(58, arc=60): FOUND at dist=73 ang=64
+[0570] Hunter scanAt(98, arc=60): FOUND at dist=72 ang=72
+[0583] Hunter scanAt(100, arc=60): FOUND at dist=55 ang=121
+[0585] Spinner scanAt(287, arc=45): FOUND at dist=50 ang=307
+[0585] Spinner fireAt: SUCCESS at angle 307 from (52,233)
+[0585] Hunter scanAt(140, arc=60): FOUND at dist=50 ang=127
+[0586] Spinner scanAt(295, arc=45): FOUND at dist=48 ang=310
+[0587] Spinner scanAt(303, arc=45): FOUND at dist=46 ang=313
+[0588] Spinner scanAt(311, arc=45): FOUND at dist=43 ang=316
+[0588] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 70->60)
+[0588] Hunter fireAt: SUCCESS at angle 13 from (32,190)
+[0589] Spinner scanAt(319, arc=45): FOUND at dist=40 ang=319
+[0590] Spinner scanAt(327, arc=45): FOUND at dist=38 ang=324
+[0591] Spinner scanAt(335, arc=45): FOUND at dist=36 ang=329
+[0592] Spinner scanAt(343, arc=45): FOUND at dist=34 ang=335
+[0593] Spinner scanAt(351, arc=45): FOUND at dist=33 ang=340
+[0594] Spinner scanAt(359, arc=45): FOUND at dist=32 ang=345
+[0595] Spinner scanAt(7, arc=45): FOUND at dist=31 ang=349
+[0600] STATUS Spinner: HP=80 ammo=40 missiles=3 energy=99 pos=(59,206)
+[0600] STATUS Hunter: HP=60 ammo=44 missiles=3 energy=100 pos=(59,174)
+[0619] Hunter scanAt(184, arc=60): FOUND at dist=95 ang=185
+[0632] Hunter scanAt(186, arc=60): FOUND at dist=127 ang=213
+[0634] Hunter scanAt(226, arc=60): FOUND at dist=128 ang=218
+[0644] Spinner scanAt(39, arc=45): FOUND at dist=116 ang=58
+[0644] Spinner fireAt: SUCCESS at angle 58 from (70,200)
+[0645] Spinner scanAt(47, arc=45): FOUND at dist=113 ang=59
+[0646] Spinner scanAt(55, arc=45): FOUND at dist=111 ang=60
+[0647] Spinner scanAt(63, arc=45): FOUND at dist=108 ang=61
+[0647] Hunter scanAt(228, arc=60): FOUND at dist=108 ang=241
+[0648] Spinner scanAt(71, arc=45): FOUND at dist=105 ang=62
+[0649] Spinner scanAt(79, arc=45): FOUND at dist=103 ang=63
+[0649] Hunter scanAt(268, arc=60): FOUND at dist=103 ang=243
+[0650] Spinner scanAt(87, arc=45): FOUND at dist=101 ang=65
+[0661] Hunter scanAt(238, arc=60): FOUND at dist=85 ang=242
+[0674] Hunter scanAt(240, arc=60): FOUND at dist=100 ang=249
+[0676] Hunter scanAt(280, arc=60): FOUND at dist=100 ang=254
+[0689] Hunter scanAt(282, arc=60): FOUND at dist=79 ang=286
+[0698] Spinner scanAt(111, arc=45): FOUND at dist=43 ang=129
+[0698] Spinner fireAt: SUCCESS at angle 129 from (94,213)
+[0699] Spinner scanAt(119, arc=45): FOUND at dist=38 ang=131
+[0699] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 60->50)
+[0699] Hunter fireAt: SUCCESS at angle 144 from (121,242)
+[0700] STATUS Spinner: HP=80 ammo=38 missiles=3 energy=95 pos=(87,207)
+[0700] STATUS Hunter: HP=50 ammo=43 missiles=3 energy=95 pos=(111,230)
+[0700] Spinner scanAt(127, arc=45): FOUND at dist=34 ang=133
+[0701] Spinner scanAt(135, arc=45): FOUND at dist=28 ang=139
+[0702] Spinner scanAt(143, arc=45): FOUND at dist=22 ang=146
+[0703] Spinner scanAt(151, arc=45): FOUND at dist=17 ang=156
+[0704] Spinner scanAt(159, arc=45): FOUND at dist=13 ang=171
+[0719] Spinner scanAt(279, arc=45): FOUND at dist=36 ang=294
+[0719] Spinner fireAt: SUCCESS at angle 294 from (53,237)
+[0720] Spinner scanAt(287, arc=45): FOUND at dist=36 ang=292
+[0720] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 50->40)
+[0720] Hunter fireAt: SUCCESS at angle 279 from (13,227)
+[0721] Spinner scanAt(295, arc=45): FOUND at dist=35 ang=290
+[0722] Spinner scanAt(303, arc=45): FOUND at dist=36 ang=288
+[0745] Hunter scanAt(100, arc=60): FOUND at dist=81 ang=114
+[0747] Hunter scanAt(140, arc=60): FOUND at dist=88 ang=120
+[0760] Hunter scanAt(142, arc=60): FOUND at dist=110 ang=155
+[0762] Hunter scanAt(182, arc=60): FOUND at dist=109 ang=161
+[0773] Spinner scanAt(351, arc=45): FOUND at dist=90 ang=7
+[0773] Spinner fireAt: SUCCESS at angle 7 from (53,209)
+[0774] Spinner scanAt(359, arc=45): FOUND at dist=87 ang=9
+[0775] Spinner scanAt(7, arc=45): FOUND at dist=84 ang=10
+[0775] Hunter scanAt(184, arc=60): FOUND at dist=84 ang=190
+[0776] Spinner scanAt(15, arc=45): FOUND at dist=82 ang=12
+[0777] Spinner scanAt(23, arc=45): FOUND at dist=79 ang=14
+[0777] Hunter scanAt(224, arc=60): FOUND at dist=79 ang=194
+[0778] Spinner scanAt(31, arc=45): FOUND at dist=76 ang=17
+[0779] Spinner scanAt(39, arc=45): FOUND at dist=73 ang=17
+[0788] Hunter scanAt(162, arc=60): FOUND at dist=56 ang=192
+[0790] Hunter scanAt(202, arc=60): FOUND at dist=56 ang=190
+[0800] STATUS Spinner: HP=80 ammo=36 missiles=3 energy=99 pos=(91,234)
+[0800] STATUS Hunter: HP=40 ammo=42 missiles=3 energy=100 pos=(103,170)
+[0802] Hunter scanAt(172, arc=60): FOUND at dist=67 ang=194
+[0804] Hunter scanAt(212, arc=60): FOUND at dist=68 ang=199
+[0817] Hunter scanAt(214, arc=60): FOUND at dist=50 ang=239
+[0819] Hunter scanAt(254, arc=60): FOUND at dist=44 ang=248
+[0837] Hunter scanAt(56, arc=60): FOUND at dist=32 ang=78
+[0839] Hunter scanAt(96, arc=60): FOUND at dist=38 ang=88
+[0841] Hunter scanAt(106, arc=60): FOUND at dist=43 ang=97
+[0854] Hunter scanAt(138, arc=60): FOUND at dist=56 ang=138
+[0856] Hunter scanAt(128, arc=60): FOUND at dist=55 ang=141
+[0857] Spinner scanAt(303, arc=45): FOUND at dist=54 ang=321
+[0857] Spinner fireAt: SUCCESS at angle 321 from (50,227)
+[0858] Spinner scanAt(311, arc=45): FOUND at dist=53 ang=321
+[0858] Hunter scanAt(148, arc=60): FOUND at dist=53 ang=141
+[0859] Spinner scanAt(319, arc=45): FOUND at dist=52 ang=320
+[0860] Spinner scanAt(327, arc=45): FOUND at dist=50 ang=319
+[0860] Hunter scanAt(168, arc=60): FOUND at dist=50 ang=139
+[0861] Spinner scanAt(335, arc=45): FOUND at dist=49 ang=316
+[0861] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 40->30)
+[0861] Hunter fireAt: SUCCESS at angle 282 from (1,191)
+[0889] Hunter scanAt(137, arc=60): FOUND at dist=136 ang=146
+[0891] Hunter scanAt(177, arc=60): FOUND at dist=142 ang=150
+[0900] STATUS Spinner: HP=80 ammo=35 missiles=3 energy=99 pos=(65,243)
+[0900] STATUS Hunter: HP=30 ammo=41 missiles=3 energy=100 pos=(32,97)
+[0903] Hunter scanAt(147, arc=60): FOUND at dist=146 ang=172
+[0905] Hunter scanAt(187, arc=60): FOUND at dist=143 ang=175
+[0906] Spinner scanAt(335, arc=45): FOUND at dist=141 ang=357
+[0906] Spinner fireAt: SUCCESS at angle 357 from (52,215)
+[0907] Spinner scanAt(343, arc=45): FOUND at dist=139 ang=359
+[0908] Spinner scanAt(351, arc=45): FOUND at dist=137 ang=0
+[0909] Spinner scanAt(359, arc=45): FOUND at dist=134 ang=1
+[0910] Spinner scanAt(7, arc=45): FOUND at dist=131 ang=2
+[0911] Spinner scanAt(15, arc=45): FOUND at dist=129 ang=2
+[0912] Spinner scanAt(23, arc=45): FOUND at dist=126 ang=3
+[0917] Hunter scanAt(157, arc=60): FOUND at dist=115 ang=183
+[0919] Hunter scanAt(197, arc=60): FOUND at dist=112 ang=183
+[0931] Hunter scanAt(167, arc=60): FOUND at dist=118 ang=182
+[0933] Hunter scanAt(207, arc=60): FOUND at dist=119 ang=184
+[0945] Hunter scanAt(177, arc=60): FOUND at dist=116 ang=203
+[0947] Hunter scanAt(217, arc=60): FOUND at dist=110 ang=207
+[0957] Spinner scanAt(23, arc=45): FOUND at dist=68 ang=44
+[0957] Spinner fireAt: SUCCESS at angle 44 from (65,202)
+[0958] Spinner scanAt(31, arc=45): FOUND at dist=63 ang=45
+[0959] Spinner scanAt(39, arc=45): FOUND at dist=58 ang=45
+[0960] Spinner scanAt(47, arc=45): FOUND at dist=54 ang=46
+[0960] Hunter scanAt(219, arc=60): FOUND at dist=54 ang=226
+[0961] Spinner scanAt(55, arc=45): FOUND at dist=49 ang=45
+[0961] Hunter scanAt(219, arc=30): FOUND at dist=49 ang=225
+[0961] Hunter fireAt: SUCCESS at angle 225 from (85,181)
+[0961] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 30->20)
+[0961] Hunter canFire: NO - cooldown (10 ticks)
+[0962] Spinner scanAt(63, arc=45): FOUND at dist=44 ang=44
+[0962] HIT: Hunter's cannon hit Spinner for 10 dmg (health: 80->70)
+[0962] Spinner canFire: NO - cooldown (5 ticks)
+[0985] Spinner scanAt(257, arc=45): FOUND at dist=29 ang=278
+[0985] Spinner fireAt: SUCCESS at angle 278 from (57,243)
+[0985] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 20->10)
+[0985] Hunter fireAt: SUCCESS at angle 265 from (26,243)
+[0986] Spinner scanAt(265, arc=45): FOUND at dist=27 ang=276
+[0987] Spinner scanAt(273, arc=45): FOUND at dist=28 ang=272
+[0988] Spinner scanAt(281, arc=45): FOUND at dist=28 ang=267
+[1000] STATUS Spinner: HP=70 ammo=32 missiles=3 energy=99 pos=(49,216)
+[1000] STATUS Hunter: HP=10 ammo=39 missiles=3 energy=100 pos=(12,264)
+[1006] Hunter scanAt(61, arc=60): FOUND at dist=74 ang=42
+[1017] Hunter scanAt(66, arc=60): FOUND at dist=80 ang=73
+[1019] Hunter scanAt(106, arc=60): FOUND at dist=78 ang=81
+[1032] Hunter scanAt(108, arc=60): FOUND at dist=51 ang=133
+[1034] Hunter scanAt(148, arc=60): FOUND at dist=45 ang=141
+[1037] Spinner scanAt(313, arc=45): FOUND at dist=36 ang=335
+[1037] Spinner fireAt: SUCCESS at angle 335 from (46,224)
+[1037] HIT: Spinner's cannon hit Hunter for 10 dmg (health: 10->0)
+[1037] Hunter fireAt: SUCCESS at angle 344 from (35,190)
+[1037] MATCH OVER: Spinner wins! (tick 1037)

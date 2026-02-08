@@ -1,8 +1,8 @@
 --[[
 
-  wx.lua - fetch weather forecast using open-meteo
-           API.
-
+  myip.lua - fetch device's external source IP as seen
+             by sites connected to on the internet.
+             also gets geo-location details.
 ]]
 
 -- ANSI color codes
@@ -11,7 +11,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "myip",
-  help = c.cyan.."myip"..c.yellow.." [file]"..c.white.." - get external IP info (save to file)",
+  help = c.cyan.."myip"..c.yellow.." [file]"..c.white.." - get ext. IP and geo-loc info [to file]",
   run = function(args, sh)
     local json = require("lua/modules/json")
     local http = require("lua/modules/http")

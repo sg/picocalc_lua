@@ -45,6 +45,8 @@ while true do
 		end
 	end
 	t=t+0.02
+	draw.text(1, 1, tostring((sys.freeMemory() / 1024)))
 	draw.blitBuffer()
+	--collectgarbage()
 end
 draw.enableBuffer(false)

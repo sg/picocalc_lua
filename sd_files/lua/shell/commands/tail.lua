@@ -7,7 +7,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "tail",
-  help = c.cyan.."tail"..c.yellow.." <file> [n]"..c.white.." - print last n lines (default 10)",
+  help = c.cyan.."tail"..c.yellow.." <file> [n]"..c.white.." - print last n lines [default 10]",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: tail <file> [num_lines]")

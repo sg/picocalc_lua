@@ -12,78 +12,129 @@ local c = require("lua/modules/simple-colors")
 return {
   name = "wx",
   aliases = {"weather"},
-  help = c.cyan.."wx"..c.yellow.." [lat][lon][file]"..c.white.." - download weather forecast",
+  help = c.cyan.."wx"..c.yellow..""..c.white.." - download weather forecast",
   run = function(args, sh)
-    local json = require("lua/modules/json")
-    local http = require("lua/modules/http")
 
-    local output_file = nil
-    local lat = "30.31"
-    local lon = "-97.95"
+    local ok, c = pcall(require,"lua/modules/simple-colors")
+    if not ok then
+      print("Can't find 'lua/modules/simple-colors.lua'")
+      return
+    end
+    
+    local ok, json = pcall(require,"lua/modules/json")
+    if not ok then
+      print("Can't find 'lua/modules/json.lua'")
+      return
+    end
+   
+    local ok, http = pcall(require,"lua/modules/http")
+    if not ok then
+      print("Can't find 'lua/modules/http.lua'")
+      return
+    end
+    
+    local ok, serialize = pcall(require,"lua/modules/serialize")
+    
+    if not ok then
+      print("Can't find 'lua/modules/serialize.lua'")
+      return
+    end
 
-    if args[1] then
-      lat = args[1]
-      if not args[2] then
-        print("Usage: wx [lat] [lon] [file]")
-      else
-        lon = args[2]
+    local default_lat = "30.25"
+    local default_lon = "-97.75"
+    local lat = ""
+    local lon = ""
+    local wx_conf_path = "lua/wx.conf"
+    local wx_conf = {}
+    local using_conf = false
+
+    local function loadConfig()                               --
+      local func, err = loadfile(wx_conf_path)
+      if not func then
+        print(c.red .. "Error: " .. c.white .. "failed to load wx.conf: " .. err)
+	      return false
+      end
+      local success, conf = pcall(func)
+      if not success then
+        print(c.red .. "Error: " .. c.white .. "failed to pcall wx.conf code.")
+        return false
+      end
+      wx_conf = conf
+      print("wx.conf loaded...")
+      return true
+    end
+
+    if fs.exists(wx_conf_path) then
+      print("found " .. wx_conf_path)
+      if loadConfig() then
+        using_config = true
       end
     end
 
-    if args[3] then
-      output_file = args[3]
-    end
+    if using_config then
+      -- available locations in config
+      local picker = {}
+      for name, loc in pairs(wx_conf) do
+        table.insert(picker, name)
+      end
+      -- sort alphabtically
+      table.sort(picker, function(a, b)
+        return a:lower() < b:lower()
+      end)
 
-    if not wifi.isConnected() then
-      return sh:error("Wi-Fi not connected")
-    end
+      for i, name in ipairs(picker) do
+        print(string.format("%2d. %s", i, name))
+      end
+    
+      local selection = term.read("Choose location: [1] ")
+      if selection == "" then selection = "1" end
+      if tonumber(selection) > #picker then
+        print(c.red .. "Error: " .. c.white .. "invalid selection.")
+        return
+      end
 
+      local loc_idx = tonumber(selection)
+      lat = wx_conf[picker[loc_idx]]["lat"]
+      lon = wx_conf[picker[loc_idx]]["lon"]
+    else
+      lat = term.read("Enter latitude: [" .. default_lat .. "] ")
+      if lat == "" then lat = default_lat end
+      lon = term.read("Enter longitude: [" .. default_lon .. "] ")
+      if lon == "" then lon = default_lon end
+    end
 
     local url = "https://api.open-meteo.com/v1/forecast?latitude=" .. lat .. "&longitude=" .. lon .. "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&wind_speed_unit=mph&temperature_unit=fahrenheit&precipitation_unit=inch"
-    print("Fetching current weather from api.open-meteo.com...")
+  
+    if not wifi.isConnected() then
+      print("Wi-Fi not connected")
+      return
+    end
 
+    print("Fetching current weather from api.open-meteocom...")
     local response, err = http.get(url)
 
     if not response then
-      return sh:error(err or "request failed")
+      print("Request failed:" .. err)
+      return
     end
 
     print(string.format("Status: %d %s", response.status, response.reason or ""))
 
     if response.status >= 400 then
-      return sh:error("Request failed with status " .. response.status)
+      print("Request failed with status " .. response.status)
+      return
     end
 
     local body = response.body:match('{.*}}') or ""
-
-    if output_file then
-      -- Save to file
-      local path = sh:resolve_path(output_file)
-      local fspath = sh:fs_path(path)
-      local f = fs.open(fspath, "w")
-      if not f then
-        return sh:error("Cannot write to " .. output_file)
-      end
-      f:write(body)
-      f:close()
-      sh:success(string.format("Saved %d bytes to %s", #body, output_file))
-    else
-      -- Print to console
-      --print("")
-      --print(body)
-      print("")
-      local response = json.decode(body)
-      local current_wx = response["current"]
-      for k, v in pairs(current_wx) do
-        print(c.cyan .. k .. c.white .. ": " .. c.green .. v .. c.white)
-      end
-      print("")
+    --print("")
+    --print(body)
+    print("")
+    local response_tbl = json.decode(body)
+    local current_wx = response_tbl["current"]
+    for k, v in pairs(current_wx) do
+      print(c.cyan .. k .. c.white .. ": " .. c.green .. v .. c.white)
     end
+    print("")
 
-    -- unload modules to save memory
-    package.loaded["lua/modules/http"] = nil
-    package.loaded["lua/modules/json"] = nil
-    collectgarbage()
-    
   end
 }

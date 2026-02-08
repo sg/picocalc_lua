@@ -1,19 +1,12 @@
 --[[
 
- base64 -- v1.5.3 public domain Lua base64 encoder/decoder
+ base64 -- public domain Lua base64 encoder/decoder
  no warranty implied; use at your own risk
 
- Needs bit32.extract function. If not present it's implemented using BitOp
- or Lua 5.3 native bit operators. For Lua 5.1 fallbacks to pure Lua
- implementation inspired by Rici Lake's post:
-   http://ricilake.blogspot.co.uk/2007/10/iterating-bits-in-lua.html
+basd on: github.com/iskolbin/lbase64
 
- author: Ilya Kolbin (iskolbin@gmail.com)
- url: github.com/iskolbin/lbase64
-
- COMPATIBILITY
-
- Lua 5.1+, LuaJIT
+modified to remove deprecated bit32 references
+ Lua 5.3+
 
  LICENSE
 
@@ -24,33 +17,9 @@
 
 local base64 = {}
 
-local extract = _G.bit32 and _G.bit32.extract -- Lua 5.2/Lua 5.3 in compatibility mode
-if not extract then
-	if _G.bit then -- LuaJIT
-		local shl, shr, band = _G.bit.lshift, _G.bit.rshift, _G.bit.band
-		extract = function( v, from, width )
-			return band( shr( v, from ), shl( 1, width ) - 1 )
-		end
-	elseif _G._VERSION == "Lua 5.1" then
-		extract = function( v, from, width )
-			local w = 0
-			local flag = 2^from
-			for i = 0, width-1 do
-				local flag2 = flag + flag
-				if v % flag2 >= flag then
-					w = w + 2^i
-				end
-				flag = flag2
-			end
-			return w
-		end
-	else -- Lua 5.3+
-		extract = load[[return function( v, from, width )
+local extract = load[[return function( v, from, width )
 			return ( v >> from ) & ((1 << width) - 1)
 		end]]()
-	end
-end
-
 
 function base64.makeencoder( s62, s63, spad )
 	local encoder = {}

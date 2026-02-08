@@ -20,8 +20,13 @@ term.setCursorBlink(true)
 -- load readline module for history support
 local readline = require("lua/shell/modules/readline")
 
--- shell state and configuration
+-- ANSI escape codes
+local ESC = "\27["
+local RESET = ESC .. "0m"
+local DIM = ESC .. "2m"
+local CLEAR_LINE = ESC .. "K"
 
+-- shell state and configuration
 local shell = {
   cwd = "/",
   prev_cwd = "/",
@@ -30,15 +35,15 @@ local shell = {
   commands = {},
   -- ANSI color codes
   colors = {
-    black   = "\27[90m",
-    red     = "\27[91m",
-    green   = "\27[92m",
-    yellow  = "\27[93m",
-    blue    = "\27[94m",
-    magenta = "\27[95m",
-    cyan    = "\27[96m",
-    white   = "\27[97m",
-    reset   = "\27[0m",
+    black   = ESC .. "90m",
+    red     = ESC .. "91m",
+    green   = ESC .. "92m",
+    yellow  = ESC .. "93m",
+    blue    = ESC .. "94m",
+    magenta = ESC .. "95m",
+    cyan    = ESC .. "96m",
+    white   = ESC .. "97m",
+    reset   = RESET,
   },
   -- configuration
   config = {
@@ -51,6 +56,40 @@ local shell = {
 }
 -- shorthand color references
 local c = shell.colors
+
+-- commands that support file/directory completion
+local file_commands = {
+  cd = true,
+  ls = true, 
+  cat = true,
+  cp = true,
+  mv = true,
+  rm = true,
+  mkdir = true,
+  rmdir = true,
+  edit = true,
+  vi = true,
+  run = true,
+  head = true,
+  tail = true,
+  xxd = true,
+  dir = true,
+  list = true,
+  nano = true,
+  del = true,
+  delete = true,
+  copy = true,
+  rename = true,
+  ren = true,
+  dofile = true,
+  exec = true,
+  page = true,
+  less = true,
+  psram = true,
+  psr = true,
+  zinfo = true,
+  zplay = true,
+}
 
 
 -- utility functions
@@ -133,12 +172,12 @@ function shell:fs_path(path)
   if path == "/" or path == "" then
     return ""
   end
-  -- remove trailing slash if present (but not for root)
+  -- remove trailing slash if present
   path = path:gsub("/$", "")
   if path == "" then
     return ""
   end
-  -- remove leading slash for fs API
+  -- remove leading slash for 'fs' API
   if path:sub(1, 1) == "/" then
     return path:sub(2)
   end
@@ -151,6 +190,7 @@ function shell:is_root(path)
 end
 
 -- parse input into command and arguments
+-- to-do: allow escaping quote chars (for 'eval' command)
 function shell:parse_input(input)
   if not input or input == "" then
     return nil, {}
@@ -245,15 +285,169 @@ function shell:format_size(size)
   end
 end
 
+-- complete command names
+function shell:complete_command(prefix)
+  local matches = {}
+  local seen = {}
+
+  for name, _ in pairs(self.commands) do
+    if not seen[name] and name:sub(1, #prefix) == prefix then
+      table.insert(matches, name)
+      seen[name] = true
+    end
+  end
+
+  table.sort(matches)
+  return matches
+end
+
+-- complete file/directory paths
+function shell:complete_path(partial)
+  -- handle empty partial
+  if not partial or partial == "" then
+    partial = "./"
+  end
+
+  -- determine directory to list and prefix to match
+  local dir_part, name_part
+
+  -- check for trailing slash (list directory contents)
+  if partial:match("/$") then
+    dir_part = partial
+    name_part = ""
+  else
+    -- split into directory and filename parts
+    local last_slash = partial:match(".*/()")
+    if last_slash then
+      dir_part = partial:sub(1, last_slash - 1)
+      name_part = partial:sub(last_slash)
+    else
+      dir_part = ""
+      name_part = partial
+    end
+  end
+
+  -- resolve the directory path
+  local resolved_dir
+  if dir_part == "" then
+    resolved_dir = self.cwd
+  else
+    resolved_dir = self:resolve_path(dir_part)
+  end
+
+  local fs_dir = self:fs_path(resolved_dir)
+
+  -- check directory exists
+  if not self:is_root(resolved_dir) and not fs.isDir(fs_dir) then
+    return {}
+  end
+
+  -- list directory entries
+  local entries = fs.list(fs_dir)
+  if not entries then
+    return {}
+  end
+
+  local matches = {}
+  local prefix_lower = name_part:lower()
+
+  for _, entry in ipairs(entries) do
+    local name = entry.name
+    if name:lower():sub(1, #prefix_lower) == prefix_lower then
+      -- build the completion string
+      local completion
+      if dir_part == "" then
+        completion = name
+      elseif partial:sub(1, 1) == "/" then
+        -- absolute path
+        if dir_part == "/" then
+          completion = "/" .. name
+        else
+          completion = dir_part .. "/" .. name
+        end
+      else
+        -- relative path
+        completion = dir_part .. "/" .. name
+      end
+
+      -- add trailing slash for directories
+      if entry.isDir then
+        completion = completion .. "/"
+      end
+
+      table.insert(matches, completion)
+    end
+  end
+
+  table.sort(matches)
+  entries = nil
+  collectgarbage("collect")
+
+  return matches
+end
+
+-- main completion function called by readline
+function shell:complete(buffer, cursor_x)
+  -- extract word boundaries
+  local before_cursor = buffer:sub(1, cursor_x - 1)
+
+  -- find the start of the current word (handle quotes)
+  local word_start = 1
+  local in_quote = false
+  local quote_char = nil
+
+  for i = 1, #before_cursor do
+    local char = before_cursor:sub(i, i)
+    if not in_quote and (char == '"' or char == "'") then
+      in_quote = true
+      quote_char = char
+      word_start = i + 1
+    elseif in_quote and char == quote_char then
+      in_quote = false
+      quote_char = nil
+    elseif not in_quote and char == " " then
+      word_start = i + 1
+    end
+  end
+
+  local current_word = before_cursor:sub(word_start)
+
+  -- determine if completing command or argument
+  local first_space = buffer:find(" ")
+  local is_command = not first_space or cursor_x <= first_space
+
+  local completions
+  if is_command then
+    -- complete command name
+    completions = self:complete_command(current_word)
+  else
+    -- check if the command supports file completion
+    local cmd = buffer:match("^(%S+)")
+    if file_commands[cmd] then
+      completions = self:complete_path(current_word)
+    else
+      return nil, word_start, cursor_x - 1
+    end
+  end
+
+  return completions, word_start, cursor_x - 1
+end
+
 -- display the prompt and read input
 function shell:prompt()
   local cwd_display = c.green .. "[" .. c.white .. self.cwd .. c.green .. ":" .. c.white
   --term.write(cwd_display .. "\n")
   local prompt_str = cwd_display .. c.green .. self.config.prompt_format .. c.white
-  return readline.read(prompt_str)
+
+  -- create completion callback
+  local complete_fn = function(buffer, cursor_x)
+    return self:complete(buffer, cursor_x)
+  end
+
+  return readline.read(prompt_str, complete_fn)
 end
 
--- change directory with history tracking
+-- change directory 
 function shell:change_dir(path)
   local new_path = self:resolve_path(path)
 
@@ -269,8 +463,6 @@ function shell:change_dir(path)
   if new_path ~= "/" and not new_path:match("/$") then
     new_path = new_path .. "/"
   end
-
-  -- root is a special case
   if new_path == "//" then
     new_path = "/"
   end
@@ -288,20 +480,23 @@ function shell:register(cmd_def)
     return self:error("Invalid command definition")
   end
 
-  local name = cmd_def.name
-  if not name then
+  if not cmd_def.name then
     return self:error("Command must have a name")
   end
 
-  self.commands[name] = {
+  if not cmd_def.run then
+    return self:error("Command must have a 'run' function")
+  end
+
+  self.commands[cmd_def.name] = {
     help = cmd_def.help or "No help available",
-    run = cmd_def.run or function() end,
+    run = cmd_def.run,
   }
 
   -- register aliases
   if cmd_def.aliases then
     for _, alias in ipairs(cmd_def.aliases) do
-      self.commands[alias] = self.commands[name]
+      self.commands[alias] = self.commands[cmd_def.name]
     end
   end
 
@@ -314,6 +509,7 @@ function shell:load_external_commands()
   local fs_cmd_path = self:fs_path(cmd_path)
 
   if not fs.isDir(fs_cmd_path) then
+    print("External cmd directory: '" .. fs_cmd_path .. "' not found. Using built-in commands only.")
     return  -- no external commands directory, that's fine
   end
 
@@ -348,6 +544,11 @@ function shell:execute(cmd, args)
   else
     self:error("Unknown command: " .. cmd)
     term.write("Type 'help' for available commands\n")
+  end
+
+  -- blit buffer if in buffer mode (for screenshot support)
+  if _G._buffer_mode_blit then
+    draw.blitBuffer()
   end
 end
 
@@ -384,8 +585,7 @@ local builtin_commands = {
 
         -- sort alphabetically
         table.sort(cmds, function(a, b) return a.name < b.name end)
-
-        for _, cmd in ipairs(cmds) do
+        for _, cmd in pairs(cmds) do
           term.write(" " .. cmd.help .. "\n")
         end
       end
@@ -474,12 +674,24 @@ local builtin_commands = {
         return sh:error("Cannot open '" .. args[1] .. "'")
       end
 
-      local content = f:readAll()
-      f:close()
-
-      if content then
-        term.write(content .. "\n")
+      -- read/write 16KB at a time if wifi not
+      -- connected, otherwise reduce to 4KB
+      local block_size
+      if wifi.isConnected() then
+        block_size = 4096
+      else
+        block_size = 16384
       end
+      -- force GC before read loop to reduce heap fragmentation
+      collectgarbage("collect")
+      local block = f:read(block_size)
+      while block ~= nil do
+        term.write(block)
+        block = f:read(block_size)
+      end
+      f:close()
+      term.write("\n")
+
     end
   },
 
@@ -684,6 +896,8 @@ local builtin_commands = {
       else
         block_size = 16384
       end
+      -- force GC before copy to reduce heap fragmentation
+      collectgarbage("collect")
       local block = sf:read(block_size)
       local bytes_copied = 0
       local blocks_copied = 0
@@ -711,7 +925,7 @@ local builtin_commands = {
   -- eval: execute Lua code
   {
     name = "eval",
-    aliases = {"exec", "lua"},
+    aliases = {"lua"},
     help = c.cyan.."eval"..c.yellow.." <lua code>"..c.white.." - execute Lua code",
     run = function(args, sh)
       if #args == 0 then
@@ -739,7 +953,7 @@ local builtin_commands = {
   -- run: execute Lua file (dofile)
   {
     name = "run",
-    aliases = {"dofile"},
+    aliases = {"dofile", "exec"},
     help = c.cyan.."run"..c.yellow.." <file.lua>"..c.white.." - execute Lua script",
     run = function(args, sh)
       if not args[1] then
@@ -774,7 +988,7 @@ local builtin_commands = {
   {
     name = "history",
     aliases = {"hist"},
-    help = c.cyan.."history"..c.yellow.." [n]"..c.white.." - show command history (last n entries)",
+    help = c.cyan.."history"..c.yellow.." [n]"..c.white.." - show command history [last n entries]",
     run = function(args, sh)
       local count = tonumber(args[1]) or #readline.history
       local start = math.max(1, #readline.history - count + 1)

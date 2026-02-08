@@ -7,32 +7,37 @@
   in the clear ;)
 
   Supports chunked transfer-encoding and
-  optimizes memory usage for constrained devices.
+  optimizes memory usage devices.
   Max buffered response size is 32KB, but larger
   responses can be streamed to file or console.
 
   Debug options:
-    http.DEBUG = true           -- print debug to console
-    http.DEBUG_FILE = "out.txt" -- write debug to file
+    http.DEBUG = true 
+    (print debug to console)
+    http.DEBUG_FILE = "out.txt" 
+    (write debug to file)
 
   Streaming options (in options table):
-    output_file = "out.txt"     -- stream body to file
-    stream_to_console = true    -- stream body to console
+    output_file = "out.txt"  -- stream body to file
+    stream_to_console = true -- stream body to console
 
-  When streaming, response.body is nil and response.streamed is true.
+  When streaming, response.body is nil and
+  response.streamed is true.
 
 ]]
 
 local http = {}
 
 http._VERSION = "1.1"
-http.DEBUG = false      -- set to true to enable console debug output
-http.DEBUG_FILE = nil   -- set to filename to write debug output to file
+http.DEBUG = false      
+http.DEBUG_FILE = nil  
    
 -- default settings
 http.TIMEOUT = 30 -- seconds
 http.MAX_REDIRECTS = 5
-http.USER_AGENT = "curl/8.14.1"
+-- setting the user agent to a common tool can help with
+-- some website not rejecting the connection.
+http.USER_AGENT = "curl/8.14.1" 
 
 -- track size of data rec'd during requests
 local total_size = 0
@@ -43,7 +48,7 @@ local debug_file = nil
 -- store parsed info when streaming (since we can't return full response)
 local streamed_info = nil
 
--- debug output (set http.DEBUG = true to enable console, http.DEBUG_FILE for file)
+-- debug output
 local function dbg(msg)
   local line = "http: " .. msg
   if http.DEBUG then
@@ -55,6 +60,7 @@ local function dbg(msg)
     end
     if debug_file then
       debug_file:write(line .. "\n")
+      debug_file:flush()
     end
   end
 end
@@ -75,9 +81,9 @@ local function dbg_headers(raw_headers, redirect_num)
     debug_file = fs.open(http.DEBUG_FILE, "w")
   end
   if debug_file then
-    local label = "RAW HTTP HEADERS"
+    local label = "Raw HTTP Headers"
     if redirect_num and redirect_num > 0 then
-      label = string.format("RAW HTTP HEADERS (redirect %d)", redirect_num)
+      label = string.format("Raw HTTP Headers (redirect %d)", redirect_num)
     end
     debug_file:write("\n========== " .. label .. " ==========\n")
     debug_file:write(raw_headers)
@@ -85,7 +91,9 @@ local function dbg_headers(raw_headers, redirect_num)
       debug_file:write("\n")
     end
     debug_file:write(string.rep("=", 22 + #label) .. "\n\n")
-    debug_file:flush()  -- ensure it's written immediately
+    -- flush to disk immediately so we don't lose log data on
+    -- on an OOM panic
+    debug_file:flush()
   end
 end
 
@@ -275,7 +283,8 @@ end
 local function read_response(sock, timeout, redirect_count, stream_opts)
   local chunks = {}
   total_size = 0
-  local max_size = 32 * 1024  -- 32KB max response (limited by ~264KB RAM)
+  local max_size = 32 * 1024  -- 32KB max response buffered into memory
+  local chunked_max_size = 128 * 1024  -- 128KB limit for chunked responses
   local retry_count = 0
   local max_retries = 3  -- retries on timeout when expecting more data
   stream_opts = stream_opts or {}
@@ -290,11 +299,11 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
   local is_chunked = false
   local early_complete_data = nil  -- reuse concat'd data if response complete at header parse
 
-  while total_size < max_size do
+  while total_size < max_size or (is_chunked and total_size < chunked_max_size) do
     dbg(string.format("receive loop: total=%d, chunks=%d, memfree=%d",
         total_size, #chunks, sys.freeMemory()))
 
-    local chunk, err = sock:receive(1024)  -- small buffer reduces memory pressure
+    local chunk, err = sock:receive(1024)  -- small buffer to reduce memory pressure esp if heap is super fragmented
     if not chunk then
       dbg("receive returned nil: " .. (err or "nil"))
 
@@ -334,6 +343,27 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
       dbg(string.format("got chunk: %d bytes, total now %d", #chunk, total_size))
       table.insert(chunks, chunk)
 
+      -- for chunked responses past normal limit, run periodic GC and check for terminator
+      if is_chunked and total_size >= max_size then
+        -- futzed around with how often, and seems less likely to OOM panic if the #chunks % X value is set on the low side. Ymmv...
+        if #chunks % 2 == 0 then
+          collectgarbage("collect")
+          dbg(string.format("GC during chunked: total=%d, memfree=%d", total_size, sys.freeMemory()))
+        end
+
+        -- check for terminator in last few chunks to break early
+        local search_data
+        if #chunks <= 3 then
+          search_data = table.concat(chunks)
+        else
+          search_data = chunks[#chunks-2] .. chunks[#chunks-1] .. chunks[#chunks]
+        end
+        if search_data:find("0\r\n\r\n") then
+          dbg("found chunked terminator (extended read)")
+          break
+        end
+      end
+
       if not headers_parsed then
         -- search for end of headers in last 2 chunks only (to catch boundary)
         local search_data
@@ -345,7 +375,7 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
 
         if search_data:find("\r\n\r\n") then
           dbg("found header end marker")
-          -- found header end marker - do ONE concat to parse headers
+          -- found header end marker - do one concat to parse headers
           local data = table.concat(chunks)
           local headers, body_start = parse_headers(data, 1)
           headers_parsed = true
@@ -365,7 +395,7 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
             if content_length > max_size then
               -- can we stream it?
               if stream_opts.output_file or stream_opts.stream_to_console then
-                dbg(string.format("Content-Length %d exceeds max_size %d, streaming...", content_length, max_size))
+                dbg(string.format("Content-Length %d exceeds max_size %d to buffer in RAM, streaming...", content_length, max_size))
                 -- parse status line before we free the data
                 local first_line_end = data:find("\r\n")
                 local status_line = data:sub(1, first_line_end - 1)
@@ -379,7 +409,7 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
                 -- open output file if specified
                 local out_file = nil
                 if stream_opts.output_file then
-                  out_file = fs.open(stream_opts.output_file, "w")
+                  out_file = fs.open(stream_opts.output_file, "wb")
                   if not out_file then
                     for i = 1, #chunks do chunks[i] = nil end
                     streamed_info = nil
@@ -393,21 +423,23 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
                   out_file:write(body_so_far)
                 end
                 if stream_opts.stream_to_console then
-                  io.write(body_so_far)
+                  term.write(body_so_far)
                 end
                 -- free the chunks we've accumulated
                 for i = 1, #chunks do chunks[i] = nil end
                 chunks = nil
                 data = nil
-                collectgarbage("collect")
+                collectgarbage()
                 dbg(string.format("streamed initial %d bytes, memfree=%d", bytes_written, sys.freeMemory()))
                 -- continue reading and streaming
+                local stream_retries = 5  -- more retries for large file streaming
+                local gc_counter = 0
                 while bytes_written < content_length do
-                  local chunk, err = sock:receive(1024)
+                  local chunk, err = sock:receive(4096)
                   if not chunk then
-                    if err == "timeout" and retry_count < max_retries then
+                    if err == "timeout" and retry_count < stream_retries then
                       retry_count = retry_count + 1
-                      dbg(string.format("stream retry %d/%d", retry_count, max_retries))
+                      dbg(string.format("stream retry %d/%d", retry_count, stream_retries))
                     else
                       dbg("stream ended: " .. (err or "unknown"))
                       break
@@ -419,12 +451,13 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
                       out_file:write(chunk)
                     end
                     if stream_opts.stream_to_console then
-                      io.write(chunk)
+                      term.write(chunk)
                     end
                     -- free chunk immediately
                     chunk = nil
-                    if bytes_written % 8192 < 1024 then  -- periodic GC
-                      collectgarbage("step")
+                    gc_counter = gc_counter + 1
+                    if gc_counter % 8 == 0 then
+                      collectgarbage()
                       dbg(string.format("streaming: %d/%d bytes, memfree=%d", bytes_written, content_length, sys.freeMemory()))
                     end
                   end
@@ -433,7 +466,7 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
                   out_file:close()
                 end
                 if stream_opts.stream_to_console then
-                  io.write("\n")  -- newline after streamed content
+                  term.write("\n")
                 end
                 dbg(string.format("stream complete: %d bytes", bytes_written))
                 -- return marker for streamed body
@@ -466,7 +499,7 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
           end
           -- allow data to be garbage collected if we're continuing
           data = nil
-          collectgarbage("step")
+          collectgarbage()
         end
       else
         -- headers already parsed, just track body size
@@ -506,7 +539,7 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
   if content_length then
     local body_received = total_size - header_byte_count
     if body_received < content_length then
-      dbg(string.format("WARNING: incomplete body, got %d of %d bytes", body_received, content_length))
+      dbg(string.format("Warning: incomplete body, got %d of %d bytes", body_received, content_length))
     end
   end
 
@@ -523,12 +556,12 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
   -- clear chunks table to free memory before returning
   for i = 1, #chunks do chunks[i] = nil end
   chunks = nil
-  collectgarbage("collect")
+  collectgarbage()
   dbg(string.format("result ready, %d bytes, memfree=%d", #result, sys.freeMemory()))
   return result
 end
 
--- perform an HTTP request
+-- perform HTTP request
 function http.request(url, options)
   options = options or {}
   local method = options.method or "GET"
@@ -551,8 +584,9 @@ function http.request(url, options)
 
   -- create socket type based on scheme
   local sock, err
-  -- Force garbage collection before creating socket (TLS sockets use ~16KB)
-  collectgarbage("collect")
+  -- force garbage collection before creating socket
+  -- (TLS sockets use 16kb)
+  collectgarbage()
   dbg(string.format("memfree after GC: %d", sys.freeMemory()))
   dbg("creating socket...")
   if scheme == "https" then
@@ -649,7 +683,7 @@ function http.request(url, options)
     response_body = response_data:sub(body_start)
     -- release original data now that we have the body
     response_data = nil
-    collectgarbage("collect")
+    collectgarbage()
     dbg(string.format("body extracted, %d bytes, memfree: %d", #response_body, sys.freeMemory()))
 
     -- handle chunked transfer-encoding
@@ -659,7 +693,7 @@ function http.request(url, options)
       local decoded, decode_err = dechunk_body(response_body)
       if decoded then
         response_body = decoded
-        collectgarbage("collect")
+        collectgarbage()
         dbg(string.format("dechunked to %d bytes, memfree: %d", #response_body, sys.freeMemory()))
       else
         dbg("dechunk failed: " .. (decode_err or "unknown"))
@@ -689,7 +723,7 @@ function http.request(url, options)
 
       options._redirect_count = redirect_count + 1
       dbg(string.format("redirect %d: %d -> %s", redirect_count + 1, status_code, location))
-      --for 303, change method to GET
+      --for 303, set method to GET
       if status_code == 303 then
         options.method = "GET"
         options.body = nil
@@ -712,14 +746,14 @@ function http.request(url, options)
   }
 end
 
--- convenience function for GET requests
+-- GET requests
 function http.get(url, options)
   options = options or {}
   options.method = "GET"
   return http.request(url, options)
 end
 
--- convenience function for POST requests
+-- POST requests
 function http.post(url, body, content_type, options)
   options = options or {}
   options.method = "POST"

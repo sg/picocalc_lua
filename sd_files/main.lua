@@ -4,10 +4,9 @@
 
 print("")
 term.setTextColor(colors.lime)
-print("Available modules:")
+print("Loaded modules:")
 term.setTextColor(colors.lightBlue)
 for name, module_table in pairs(package.loaded) do
-  --print("--> " .. name)
   term.write(name.." ")
 end
 term.setTextColor(colors.white)

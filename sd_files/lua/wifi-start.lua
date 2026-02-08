@@ -1,12 +1,38 @@
 --[[
 
   wifi-start.lua
+
   Load wifi details from pre-existing config file or
-  scan for Wi-Fi networks and connect to one selected by the user
+  scan for Wi-Fi networks and connect to one selected
+  by the user.
+
+  The wifi password is encrypted before saving it to
+  the config file on the SD card. It is only using
+  rc4 with symetric key, but might prevent a non-tech
+  person from immediately joining your network if your
+  SD card is lost. Anyone else, of course, will figure
+  it out in about 2 minutes ¯\_(ツ)_/¯ 
+
 ]]
 
-local x = require("lua/modules/xor")
+local rc4 = require("lua/modules/rc4")
 local b64 = require("lua/modules/base64")
+local serialize = require("lua/modules/serialize")
+
+-- read input with buffer mode support
+-- uses shell's readline (which has auto-blit) when in buffer mode
+local function blit_read(prompt)
+  if _G._buffer_mode_blit then
+    -- use shell's readline module which has auto-blit support
+    local ok, readline = pcall(require, "lua/shell/modules/readline")
+    if ok then
+      draw.blitBuffer()  -- show any pending output
+      return readline.read(prompt)
+    end
+  end
+  -- fallback to standard term.read
+  return term.read(prompt)
+end
 
 local wifi_country_code = ""
 local wifi_config_path = "lua/wifi.conf"
@@ -15,18 +41,17 @@ local using_config = false
 local selected = {}
 local password = ""
 local auth = wifi.AUTH_OPEN
-local xkey = "x92@.gPa3{dO0B88B80O0-s"
+local xkey = "x92@.g"
 
--- funcs to encode/decode
-local function encode(val, key)
-  return b64.encode(x.xor(val, key))
+local function encrypt(val, key)
+  return b64.encode(rc4(key,val))
 end
 
-local function decode(val, key)
-  return x.xor(b64.decode(val), key)
+local function decrypt(val, key)
+  return rc4(key, b64.decode(val))
 end
 
--- funcs to load/save wifi_config from/to file 
+-- load wifi_config from file 
 local function loadWifiConfig(filename)
   local func, err = loadfile(filename)
   if func then
@@ -34,7 +59,7 @@ local function loadWifiConfig(filename)
     if success then
       return wifi_conf
     else
-      print("Error loading wifi config values: " .. wifi_config)
+      print("Error loading wifi config values: " .. wifi_conf)
       return nil
     end
   else
@@ -43,21 +68,11 @@ local function loadWifiConfig(filename)
   end
 end 
 
+-- save wifi_config to file 
 local function saveWifiConfig(filename, data_table)
   local file = fs.open(filename, "w")
   if file then
-    -- serialize the table into Lua code and write to a file.
-    -- in the future can be read and loaded into a table with pcall.
-    file:write("return ")
-    local serialized_data = "{\n"
-    for k, v in pairs(data_table) do
-      local key_str = type(k) == "string" and string.format('"%s"', k) or tostring(k)
-      local val_str = type(v) == "string" and string.format('"%s"', v) or tostring(v)
-      serialized_data = serialized_data .. string.format('    [%s] = %s,\n', key_str, val_str)
-    end
-    serialized_data = serialized_data .. "}\n"
-
-    file:write(serialized_data)
+    serialize.toFile(data_table, file)
     file:close()
     return true
   else
@@ -66,7 +81,7 @@ local function saveWifiConfig(filename, data_table)
   end
 end
 
--- func to scan for SSIDs
+-- function to scan for SSIDs
 local function scanForSSIDsAndConnect()
   print("Scanning for networks...")
   local networks, err = wifi.scan()
@@ -109,7 +124,7 @@ local function scanForSSIDsAndConnect()
 
   -- select a network
   print("")
-  local selection = term.read("Enter number (1-" .. #networks .. "): ")
+  local selection = blit_read("Enter number (1-" .. #networks .. "): ")
   local idx = tonumber(selection)
 
   if not idx or idx < 1 or idx > #networks then
@@ -122,7 +137,7 @@ local function scanForSSIDsAndConnect()
 
   -- get password if network is secured
   if selected.secure then
-    password = term.read("Password: ")
+    password = blit_read("Password: ")
     if not password or password == "" then
       print("Password required for secured network")
       return false
@@ -147,7 +162,7 @@ end
 if fs.exists(wifi_config_path) then
   wifi_config = loadWifiConfig(wifi_config_path)
   print("Wifi config found for SSID: " .. wifi_config.ssid)
-  if term.read("Connect to this SSID? [Y]/n: ") ~= "n" then
+  if blit_read("Connect to this SSID? [Y]/n: ") ~= "n" then
     -- connect using existing config
     using_config = true
   end
@@ -165,7 +180,7 @@ end
 if not using_config then
   -- init wi-fi if needed
   if not wifi.isInitialized() then
-    wifi_country_code = term.read("Set Wi-Fi two-letter country code [US]: ")  
+    wifi_country_code = blit_read("Set Wi-Fi two-letter country code [US]: ")  
     if wifi_country_code == "" then
       wifi_country_code = "US"
     end
@@ -192,35 +207,79 @@ if selected.secure then
   auth = wifi.AUTH_WPA2  
 end
 
+-- wait for connection status to settle and return actual status
+local function awaitFinalConnectionState(timeout_seconds)
+  local start = os.clock()
+  while (os.clock() - start) < timeout_seconds do
+    local status = wifi.status()
+    if status == wifi.STATUS_UP then
+      return true, nil
+    elseif status == wifi.STATUS_FAIL then
+      return false, "connection failed"
+    elseif status == wifi.STATUS_NONET then
+      return false, "network not found"
+    elseif status == wifi.STATUS_BADAUTH then
+      return false, "authentication failed"
+    end
+    -- STATUS_DOWN, JOIN, or NOIP - keep waiting for definitive result
+    for i = 1, 5000 do end
+  end
+  -- timeout - check final status
+  if wifi.isConnected() then
+    return true, nil
+  end
+  return false, "connection timed out"
+end
+
 -- connect
 print("Connecting...")
+local ok, conn_err
 if using_config then
   --print("debug: using ssid: " .. wifi_config.ssid .. " pass: " .. wifi_config.pass .. " auth: " .. wifi_config.auth)
-  local ok, conn_err = wifi.connect(wifi_config.ssid, decode(wifi_config.pass, xkey), wifi_config.auth, 30000)
-  package.loaded["lua/modules/xor"] = nil
+  ok, conn_err = wifi.connect(wifi_config.ssid, decrypt(wifi_config.pass, xkey), wifi_config.auth, 15000)
+  -- unloading modules to save memory
+  package.loaded["lua/modules/rc4"] = nil
   package.loaded["lua/modules/base64"] = nil
   collectgarbage()
-    
-  if not ok then
-    print("Connection failed: " .. (conn_err or "unknown error"))
-    return
-  end
 else
-  local ok, conn_err = wifi.connect(selected.ssid, password, auth, 30000)
-  if not ok then
-    print("Connection failed: " .. (conn_err or "unknown error"))
-    return
+  ok, conn_err = wifi.connect(selected.ssid, password, auth, 30000)
+end
+
+-- if connect returned an ambiguous err, wait for status to
+-- settle to get the real error status code.
+-- (handles spurious errors like -7/ERR_WOULDBLOCK
+-- and delayed auth failures)
+if not ok then
+  local status = wifi.status()
+  if status == wifi.STATUS_UP then
+    -- actually connected despite error
+    ok = true
+  elseif status == wifi.STATUS_BADAUTH then
+    conn_err = "authentication failed"
+  elseif status == wifi.STATUS_NONET then
+    conn_err = "network not found"
+  elseif status == wifi.STATUS_FAIL then
+    conn_err = "connection failed"
+  else
+    -- status not definitive yet, wait for it to settle
+    --print("debug: awaiting connection status...")
+    ok, conn_err = awaitFinalConnectionState(5)
   end
 end
 
+if not ok then
+  print("Connection failed: " .. (conn_err or "unknown error"))
+  return
+end
 
--- wait for DHCP to assign IP
-print("Waiting for IP address...")
-local timeout = 10 -- seconds
-local start = os.clock()
-while not wifi.isConnected() and (os.clock() - start) < timeout do
-  -- delay
-  for i = 1, 1000 do end
+-- wait for DHCP to assign IP (if not already connected)
+if not wifi.isConnected() then
+  --print("debug: waiting for IP address...")
+  ok, conn_err = awaitFinalConnectionState(10)
+  if not ok then
+    print(conn_err or "Connection timed out waiting for IP")
+    return
+  end
 end
 
 -- display connection info
@@ -228,9 +287,10 @@ if wifi.isConnected() then
   local info = wifi.getInfo()
   print("\nConnected successfully!")
   if info then
-    print("IP Address: " .. info.ip)
-    --print("Gateway:    " .. info.gateway)
-    --print("Netmask:    " .. info.netmask)
+    print("Network SSID: " .. info.ssid)
+    print("  IP Address: " .. info.ip)
+    --print("     Gateway:    " .. info.gateway)
+    --print("     Netmask:    " .. info.netmask)
   end
 else
   print("\nConnection timed out waiting for IP")
@@ -239,13 +299,14 @@ end
 -- if we manually configured wifi info then offer to save
 -- for future use
 if not using_config then
-  if term.read("Save Wifi connection info to config file? [Y]/n: ") ~= n then
+  if blit_read("Save Wifi connection info to config file? [Y]/n: ") ~= n then
     wifi_config.country = wifi_country_code
     wifi_config.ssid = selected.ssid
-    wifi_config.pass = encode(password, xkey)
+    wifi_config.pass = encrypt(password, xkey)
     wifi_config.auth = auth
     saveWifiConfig(wifi_config_path, wifi_config)
-    package.loaded["lua/modules/xor"] = nil
+    -- unloading modules to save memory
+    package.loaded["lua/modules/rc4"] = nil
     package.loaded["lua/modules/base64"] = nil
     collectgarbage()    
   end

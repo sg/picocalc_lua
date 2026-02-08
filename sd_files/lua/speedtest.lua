@@ -18,8 +18,8 @@ local function randomSprite()
 end
 
 local start, dur0, dur1, dur2
-local testDraw = randomCircle
---local testDraw = randomSprite
+--local testDraw = randomCircle
+local testDraw = randomSprite
 
 draw.clear()
 start = os.clock()
