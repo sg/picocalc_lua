@@ -1037,8 +1037,6 @@ Instrument objects have the following attributes which can be read and set:
 
 # `wifi` - Wi-Fi networking
 
-The Wi-Fi module provides networking capabilities for the PicoCalc running on a Pico 2W. All operations are blocking.
-
 ## `init([country])`
 Initialize the Wi-Fi hardware. Must be called before any other Wi-Fi functions.
 
@@ -1047,9 +1045,6 @@ Initialize the Wi-Fi hardware. Must be called before any other Wi-Fi functions.
 
 **Returns**
 1. `boolean` - Whether initialization was successful
-
-## `deinit()`
-Shut down the Wi-Fi hardware and free resources
 
 ## `isInitialized()`
 Check if Wi-Fi has been initialized
@@ -1131,8 +1126,8 @@ Get all network information as a table
 ### Authentication Modes
 
 * `AUTH_OPEN` - Open network (no password)
-* `AUTH_WPA2` - WPA2-PSK (most common)
-* `AUTH_WPA3` - WPA3-SAE (newer, more secure)
+* `AUTH_WPA2` - WPA2-PSK
+* `AUTH_WPA3` - WPA3-SAE
 
 ### Status Codes
 
@@ -1147,7 +1142,7 @@ Get all network information as a table
 
 # `socket` - TCP/UDP/TLS sockets
 
-The socket module provides low-level TCP, UDP, and TLS (HTTPS) network communication. Requires Wi-Fi to be initialized first.
+The socket module provides TCP, UDP, and TLS network communication. Requires Wi-Fi to be connected first.
 
 ## `tcp()`
 Create a new TCP socket
@@ -1164,7 +1159,7 @@ Create a new UDP socket
 2. `string` - Error message if creation failed
 
 ## `tls()`
-Create a new TLS socket for encrypted HTTPS connections. Certificate verification is disabled.
+Create a new TLS socket for encrypted connections (e.g., HTTPS). Certificate verification is disabled.
 
 **Returns**
 1. `TLSSocket` - A new TLS socket object
@@ -1186,7 +1181,7 @@ Send an ICMP echo request packet to host
 2. `string` - Error message if socket creation failed
 
 ## `dns.resolve(hostname)`
-Resolve a hostname to an IP address
+Resolve a hostname to an IP address (doesn't currently support reverse loo-ups)
 
 **Parameters**
 1. `hostname : string` - The hostname to resolve
@@ -1369,9 +1364,9 @@ Check if the TLS connection is established
 * `_VERSION` - Module version string
 
 
-# `http` - HTTP client (Lua library)
+# `http` - HTTP client
 
-The HTTP module is a pure Lua library that provides a simple HTTP/1.1 client built on top of the socket module. It supports both HTTP and HTTPS (via TLS sockets). Load with `local http = require("lua/http")`.
+The HTTP module is a Lua library that provides a simple HTTP/1.1 client built on top of the socket module. It supports both HTTP and HTTPS (via TLS sockets). Assuming you have an SD card with the expected directory structure and Lua files, load with `local http = require("lua/modules/http")`.
 
 ## `http.request(url, [options])`
 Perform an HTTP request
@@ -1379,9 +1374,9 @@ Perform an HTTP request
 **Parameters**
 1. `url : string` - The full URL to request (http:// or https://)
 2. `options : table` - Optional configuration:
-   * `method : string` - HTTP method, defaults to "GET"
+   * `method : string` - HTTP method, GET or POST (defaults to GET)
    * `headers : table` - Custom headers as key-value pairs
-   * `body : string` - Request body for POST/PUT
+   * `body : string` - Request body for POST
    * `timeout : number` - Request timeout in seconds, defaults to 30
    * `follow_redirects : boolean` - Follow redirects, defaults to true
 
@@ -1395,7 +1390,7 @@ Perform an HTTP request
 
 **Example**
 ```lua
-local http = require("lua/http")
+local http = require("lua/modules/http")
 
 local response, err = http.request("https://api.example.com/data")
 if response then
@@ -1407,30 +1402,30 @@ end
 ```
 
 ## `http.get(url, [options])`
-Convenience function for GET requests
+Simplified function for GET requests
 
 **Parameters**
 1. `url : string` - The URL to fetch
-2. `options : table` - Same options as `request()` (method is forced to GET)
+2. `options : table` - Same options as `request()` (method is set to GET)
 
 **Returns**
 Same as `request()`
 
 ## `http.post(url, body, [content_type], [options])`
-Convenience function for POST requests
+Simplified function for POST requests
 
 **Parameters**
 1. `url : string` - The URL to post to
 2. `body : string` - The request body
 3. `content_type : string` - Content-Type header, defaults to "application/x-www-form-urlencoded"
-4. `options : table` - Additional options
+4. `options : table` - Additional options (method is set to POST)
 
 **Returns**
 Same as `request()`
 
 **Example**
 ```lua
-local http = require("lua/http")
+local http = require("lua/modules/http")
 
 -- Post form data
 local params = http.encode_params({username = "user", password = "pass"})
@@ -1462,6 +1457,6 @@ Encode a table of parameters for form submission
 
 ## Settings
 
-* `http.TIMEOUT` - Default timeout in seconds (30)
-* `http.MAX_REDIRECTS` - Maximum redirects to follow (5)
-* `http.USER_AGENT` - Default User-Agent header
+* `http.TIMEOUT` - Set timeout in seconds (default is 30)
+* `http.MAX_REDIRECTS` - Maximum redirects to follow (default is 5)
+* `http.USER_AGENT` - Set User-Agent header
