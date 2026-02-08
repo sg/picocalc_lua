@@ -39,6 +39,9 @@ void lcd_scroll_local(int lines);
 void lcd_clear_local();
 
 int lcd_load_font(const char* filename);
+int lcd_screenshot(const char* filename);
+int lcd_show_bmp(const char* filename, int x, int y);
+int lcd_get_buffer_mode(void);
 
 typedef struct {
 	u8* glyphs;

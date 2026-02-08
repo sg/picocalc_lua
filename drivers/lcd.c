@@ -263,6 +263,10 @@ void lcd_clear_local() {
 	lcd_clear_ptr();
 }
 
+int lcd_get_buffer_mode(void) {
+	return framebuffer_mode;
+}
+
 bool lcd_buffer_enable_local(int mode) {
 	if (mode != LCD_BUFFERMODE_RAM) {
 		if (framebuffer) {
@@ -306,9 +310,52 @@ bool lcd_buffer_enable_local(int mode) {
 }
 
 void lcd_scroll_local(int lines) {
-	lines %= MEM_HEIGHT;
-	uint8_t cmd[] = {0x37, (lines >> 8), (lines & 0xFF)};
-	lcd_write_cmd(cmd, 3);
+	if (framebuffer_mode == LCD_BUFFERMODE_PSRAM) {
+		// Software scroll for PSRAM mode
+		// In buffer mode, 'lines' is the actual pixel delta to scroll (not cumulative)
+		if (lines > 0 && lines < LCD_HEIGHT) {
+			// Shift rows up: copy from [lines..319] to [0..319-lines]
+			// Read and write row by row to avoid needing large buffer
+			for (int y = 0; y < LCD_HEIGHT - lines; y++) {
+				// Read row from position y + lines
+				for (int x = 0; x < LCD_WIDTH; x += 10) {
+					psram_read(&psram_spi, ((x + (y + lines) * LCD_WIDTH) << 1), (uint8_t*)(lcd_tmpbuf + x), 20);
+				}
+				// Write to position y
+				for (int x = 0; x < LCD_WIDTH; x += 10) {
+					psram_write(&psram_spi, ((x + y * LCD_WIDTH) << 1), (uint8_t*)(lcd_tmpbuf + x), 20);
+				}
+			}
+			// Clear the bottom rows
+			for (int i = 0; i < 10; i++) lcd_tmpbuf[i] = 0;  // Black
+			for (int y = LCD_HEIGHT - lines; y < LCD_HEIGHT; y++) {
+				for (int x = 0; x < LCD_WIDTH; x += 10) {
+					psram_write(&psram_spi, ((x + y * LCD_WIDTH) << 1), (uint8_t*)lcd_tmpbuf, 20);
+				}
+			}
+		} else if (lines >= LCD_HEIGHT) {
+			// Scrolling more than screen height, just clear
+			lcd_psram_clear();
+		}
+	} else if (framebuffer_mode == LCD_BUFFERMODE_RAM) {
+		// Software scroll for RAM mode
+		// In buffer mode, 'lines' is the actual pixel delta to scroll (not cumulative)
+		if (lines > 0 && lines < LCD_HEIGHT) {
+			// Shift rows up using memmove
+			memmove(framebuffer, framebuffer + lines * LCD_WIDTH,
+			        (LCD_HEIGHT - lines) * LCD_WIDTH);
+			// Clear bottom rows
+			memset(framebuffer + (LCD_HEIGHT - lines) * LCD_WIDTH, 0,
+			       lines * LCD_WIDTH);
+		} else if (lines >= LCD_HEIGHT) {
+			lcd_ram_clear();
+		}
+	} else {
+		// Direct mode: use hardware scroll (cumulative position)
+		lines %= MEM_HEIGHT;
+		uint8_t cmd[] = {0x37, (lines >> 8), (lines & 0xFF)};
+		lcd_write_cmd(cmd, 3);
+	}
 }
 
 void lcd_setup_scrolling(int top_fixed_lines, int bottom_fixed_lines) {
@@ -494,6 +541,246 @@ void lcd_init() {
 
 	lcd_clear();
 	lcd_on();
+}
+
+// Screenshot - save framebuffer to BMP file
+// Returns: 0 success, -1 wrong mode, -2 file error, -3 write error
+int lcd_screenshot(const char* filename) {
+	if (framebuffer_mode == LCD_BUFFERMODE_DIRECT) {
+		return -1;  // No readable framebuffer in direct mode
+	}
+
+	FIL file;
+	FRESULT res;
+	UINT bw;
+
+	res = f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE);
+	if (res != FR_OK) {
+		return -2;
+	}
+
+	// BMP file header (14 bytes)
+	uint8_t bmp_header[14] = {
+		'B', 'M',           // Signature
+		0x42, 0x20, 0x03, 0x00,  // File size: 66 + 204800 = 204866 (0x00032042)
+		0x00, 0x00,         // Reserved
+		0x00, 0x00,         // Reserved
+		0x42, 0x00, 0x00, 0x00   // Pixel data offset: 66 (0x42)
+	};
+
+	// BMP info header (40 bytes)
+	uint8_t bmp_info[40] = {
+		0x28, 0x00, 0x00, 0x00,  // Info header size: 40
+		0x40, 0x01, 0x00, 0x00,  // Width: 320 (0x140)
+		0x40, 0x01, 0x00, 0x00,  // Height: 320 (positive = bottom-up)
+		0x01, 0x00,              // Planes: 1
+		0x10, 0x00,              // Bits per pixel: 16
+		0x03, 0x00, 0x00, 0x00,  // Compression: 3 (BI_BITFIELDS)
+		0x00, 0x20, 0x03, 0x00,  // Image size: 204800 (0x00032000)
+		0x00, 0x00, 0x00, 0x00,  // X pixels per meter
+		0x00, 0x00, 0x00, 0x00,  // Y pixels per meter
+		0x00, 0x00, 0x00, 0x00,  // Colors used
+		0x00, 0x00, 0x00, 0x00   // Important colors
+	};
+
+	// RGB565 color masks (12 bytes)
+	uint8_t color_masks[12] = {
+		0x00, 0xF8, 0x00, 0x00,  // Red mask: 0xF800
+		0xE0, 0x07, 0x00, 0x00,  // Green mask: 0x07E0
+		0x1F, 0x00, 0x00, 0x00   // Blue mask: 0x001F
+	};
+
+	// Write headers
+	res = f_write(&file, bmp_header, 14, &bw);
+	if (res != FR_OK || bw != 14) { f_close(&file); return -3; }
+
+	res = f_write(&file, bmp_info, 40, &bw);
+	if (res != FR_OK || bw != 40) { f_close(&file); return -3; }
+
+	res = f_write(&file, color_masks, 12, &bw);
+	if (res != FR_OK || bw != 12) { f_close(&file); return -3; }
+
+	// Write pixel data row by row, bottom to top (BMP format)
+	uint16_t row_buf[LCD_WIDTH];
+
+	for (int y = LCD_HEIGHT - 1; y >= 0; y--) {
+		if (framebuffer_mode == LCD_BUFFERMODE_PSRAM) {
+			// Read row from PSRAM (10 pixels at a time like existing code)
+			for (int x = 0; x < LCD_WIDTH; x += 10) {
+				psram_read(&psram_spi, (x + y * LCD_WIDTH) << 1, (uint8_t*)(row_buf + x), 20);
+			}
+		} else if (framebuffer_mode == LCD_BUFFERMODE_RAM) {
+			// Convert 8-bit indexed to 16-bit RGB565
+			for (int x = 0; x < LCD_WIDTH; x++) {
+				row_buf[x] = lcd_to16[framebuffer[x + y * LCD_WIDTH]];
+			}
+		}
+
+		res = f_write(&file, row_buf, LCD_WIDTH * 2, &bw);
+		if (res != FR_OK || bw != LCD_WIDTH * 2) {
+			f_close(&file);
+			return -3;
+		}
+	}
+
+	f_close(&file);
+	return 0;
+}
+
+// Display BMP file directly to screen at position (x, y)
+// Streams row-by-row for minimal memory usage (~2KB)
+// Supports 16-bit RGB565, 24-bit BGR, and 32-bit BGRA formats
+// Returns: 0 success, -1 file error, -2 invalid format, -3 read error
+int lcd_show_bmp(const char* filename, int x, int y) {
+	FIL file;
+	FRESULT res;
+	UINT br;
+
+	// BMP headers
+	uint8_t file_header[14];
+	uint8_t info_header[40];
+
+	res = f_open(&file, filename, FA_READ);
+	if (res != FR_OK) return -1;
+
+	// Read file header (14 bytes)
+	res = f_read(&file, file_header, 14, &br);
+	if (res != FR_OK || br != 14) { f_close(&file); return -3; }
+
+	// Check BMP signature
+	if (file_header[0] != 'B' || file_header[1] != 'M') {
+		f_close(&file);
+		return -2;
+	}
+
+	// Read info header (40 bytes)
+	res = f_read(&file, info_header, 40, &br);
+	if (res != FR_OK || br != 40) { f_close(&file); return -3; }
+
+	// Parse header fields
+	uint32_t data_offset = file_header[10] | (file_header[11] << 8) |
+	                       (file_header[12] << 16) | (file_header[13] << 24);
+	int32_t width = info_header[4] | (info_header[5] << 8) |
+	                (info_header[6] << 16) | (info_header[7] << 24);
+	int32_t height = info_header[8] | (info_header[9] << 8) |
+	                 (info_header[10] << 16) | (info_header[11] << 24);
+	uint16_t bit_depth = info_header[14] | (info_header[15] << 8);
+	uint32_t compression = info_header[16] | (info_header[17] << 8) |
+	                       (info_header[18] << 16) | (info_header[19] << 24);
+
+	// Validate bit depth (16, 24, or 32)
+	if (bit_depth != 16 && bit_depth != 24 && bit_depth != 32) {
+		f_close(&file);
+		return -2;
+	}
+
+	// For 16-bit, verify it's RGB565 (compression = BI_BITFIELDS = 3)
+	int is_rgb565 = 0;
+	if (bit_depth == 16) {
+		if (compression == 3) {
+			// Read color masks to verify RGB565
+			uint32_t r_mask, g_mask, b_mask;
+			res = f_read(&file, &r_mask, 4, &br);
+			res = f_read(&file, &g_mask, 4, &br);
+			res = f_read(&file, &b_mask, 4, &br);
+			if (r_mask == 0xF800 && g_mask == 0x07E0 && b_mask == 0x001F) {
+				is_rgb565 = 1;
+			} else {
+				f_close(&file);
+				return -2;  // Unsupported 16-bit format
+			}
+		} else {
+			f_close(&file);
+			return -2;  // 16-bit without bitfields not supported
+		}
+	}
+
+	// Handle negative height (top-down BMP)
+	int top_down = (height < 0);
+	if (top_down) height = -height;
+
+	// Calculate row size with padding (rows are padded to 4-byte boundaries)
+	int bytes_per_pixel = bit_depth / 8;
+	int row_size = ((width * bytes_per_pixel) + 3) & ~3;
+
+	// Allocate row buffer for reading (max 32-bit = 4 bytes per pixel)
+	uint8_t* read_buf = malloc(row_size);
+	if (!read_buf) { f_close(&file); return -3; }
+
+	// Allocate RGB565 output buffer for one row
+	uint16_t* row_buf = malloc(width * 2);
+	if (!row_buf) { free(read_buf); f_close(&file); return -3; }
+
+	// Process each row
+	for (int row = 0; row < height; row++) {
+		// Calculate screen Y position
+		int screen_y;
+		if (top_down) {
+			screen_y = y + row;
+		} else {
+			screen_y = y + (height - 1 - row);
+		}
+
+		// Skip rows outside screen
+		if (screen_y < 0 || screen_y >= lcd_current_height) continue;
+
+		// Seek to row in file
+		uint32_t row_offset = data_offset + (uint32_t)row * row_size;
+		res = f_lseek(&file, row_offset);
+		if (res != FR_OK) { free(read_buf); free(row_buf); f_close(&file); return -3; }
+
+		// Read row data
+		res = f_read(&file, read_buf, row_size, &br);
+		if (res != FR_OK || br != row_size) {
+			free(read_buf); free(row_buf); f_close(&file);
+			return -3;
+		}
+
+		// Convert to RGB565 if needed
+		if (bit_depth == 16 && is_rgb565) {
+			// Already RGB565, just copy
+			memcpy(row_buf, read_buf, width * 2);
+		} else if (bit_depth == 24) {
+			// Convert BGR to RGB565
+			for (int px = 0; px < width; px++) {
+				uint8_t b = read_buf[px * 3];
+				uint8_t g = read_buf[px * 3 + 1];
+				uint8_t r = read_buf[px * 3 + 2];
+				row_buf[px] = RGB(r, g, b);
+			}
+		} else if (bit_depth == 32) {
+			// Convert BGRA to RGB565 (ignore alpha)
+			for (int px = 0; px < width; px++) {
+				uint8_t b = read_buf[px * 4];
+				uint8_t g = read_buf[px * 4 + 1];
+				uint8_t r = read_buf[px * 4 + 2];
+				row_buf[px] = RGB(r, g, b);
+			}
+		}
+
+		// Calculate how many pixels to draw (clip to screen width)
+		int draw_x = x;
+		int draw_width = width;
+		int src_offset = 0;
+
+		if (draw_x < 0) {
+			src_offset = -draw_x;
+			draw_width += draw_x;
+			draw_x = 0;
+		}
+		if (draw_x + draw_width > LCD_WIDTH) {
+			draw_width = LCD_WIDTH - draw_x;
+		}
+
+		if (draw_width > 0) {
+			lcd_draw(row_buf + src_offset, draw_x, screen_y, draw_width, 1);
+		}
+	}
+
+	free(read_buf);
+	free(row_buf);
+	f_close(&file);
+	return 0;
 }
 
 int lcd_fifo_receiver(uint32_t message) {
