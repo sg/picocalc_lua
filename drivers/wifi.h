@@ -1,5 +1,5 @@
 /*
- * Wi-Fi driver interface for PicoCalc
+ * Wi-Fi driver for PicoCalc
  * wraps the cyw43 driver for Pico W boards
  */
 #pragma once
@@ -10,13 +10,13 @@
 
 // wifi status codes (maps to cyw43 link status)
 typedef enum {
-    WIFI_STATUS_DOWN    = 0,   // link down
-    WIFI_STATUS_JOIN    = 1,   // connected to wifi
-    WIFI_STATUS_NOIP    = 2,   // connected but no IP yet
-    WIFI_STATUS_UP      = 3,   // connected with IP address
-    WIFI_STATUS_FAIL    = -1,  // connection failed
-    WIFI_STATUS_NONET   = -2,  // ssid not found
-    WIFI_STATUS_BADAUTH = -3   // authentication failed
+    WIFI_STATUS_DOWN = 0, // link down
+    WIFI_STATUS_JOIN = 1, // connected to wifi
+    WIFI_STATUS_NOIP = 2, // connected but no IP yet
+    WIFI_STATUS_UP = 3, // connected with IP address
+    WIFI_STATUS_FAIL = -1, // connection failed
+    WIFI_STATUS_NONET = -2, // ssid not found
+    WIFI_STATUS_BADAUTH = -3 // authentication failed
 } wifi_status_t;
 
 // auth modes
@@ -28,14 +28,14 @@ typedef enum {
 
 // scan result entry
 typedef struct {
-    char ssid[33];        // max ssid length (32) + null terminator
-    uint8_t bssid[6];     // mac address
-    int16_t rssi;         // signal strength (dBm)
-    uint8_t channel;      // wifi channel
-    uint8_t auth_mode;    // 0=open, non-zero=secured
+    char ssid[33]; // max ssid length (32) + null terminator
+    uint8_t bssid[6]; // mac address
+    int16_t rssi; // signal strength (dBm)
+    uint8_t channel; // wifi channel
+    uint8_t auth_mode; // 0=open, non-zero=secured
 } wifi_scan_result_t;
 
-// initialization and shutdown
+// init and shutdown
 bool wifi_init(void);
 bool wifi_init_with_country(const char* country);
 void wifi_deinit(void);
@@ -52,7 +52,7 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
 void wifi_disconnect(void);
 wifi_status_t wifi_get_status(void);
 
-// network information
+// network info
 bool wifi_get_ip(char* ip_out, size_t ip_len);
 bool wifi_get_gateway(char* gw_out, size_t gw_len);
 bool wifi_get_netmask(char* nm_out, size_t nm_len);

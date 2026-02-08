@@ -37,7 +37,7 @@ static int wifi_scan_callback(void *env, const cyw43_ev_scan_result_t *result) {
         return 0;
     }
 
-    // check for duplicate SSIDs (keep the one with stronger signal)
+    // check for dupe SSIDs (keep the one with stronger signal)
     for (int i = 0; i < scan_count; i++) {
         if (strncmp(scan_results[i].ssid, (const char*)result->ssid, result->ssid_len) == 0 &&
             scan_results[i].ssid[result->ssid_len] == '\0') {
@@ -63,7 +63,7 @@ static int wifi_scan_callback(void *env, const cyw43_ev_scan_result_t *result) {
     wifi_scan_result_t* r = &scan_results[scan_count];
     memset(r, 0, sizeof(wifi_scan_result_t));
 
-    // copy SSID
+    // copy ssid
     size_t ssid_len = result->ssid_len;
     if (ssid_len > 32) ssid_len = 32;
     memcpy(r->ssid, result->ssid, ssid_len);
@@ -213,8 +213,9 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
         result = cyw43_arch_wifi_connect_blocking(ssid, pw, cyw_auth);
     }
 
-    // check actual connection status - the SDK can return spurious errors
-    // (like ERR_WOULDBLOCK/-7) even when connection is in progress or failing
+    // the SDK can return spurious errors (like ERR_WOULDBLOCK/-7) even when
+    // connection is in progress or failing, so we need to wait for it
+   // to finalize
     wifi_status_t status = wifi_get_status();
 
     // if status is already a definite failure, return it immediately
@@ -225,7 +226,6 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
         return (int)status;
     }
 
-    // if SDK returned an error but status isn't definitive yet, wait for status to settle
     // this handles cases where auth failure hasn't propagated to status yet
     if (result != 0 && status != WIFI_STATUS_JOIN && status != WIFI_STATUS_NOIP) {
         // wait up to 2 seconds for status to update with the real error
@@ -258,7 +258,6 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
     // wait for full connection (STATUS_UP) or definite failure
     if (result == 0 || status == WIFI_STATUS_JOIN || status == WIFI_STATUS_NOIP) {
         // calculate remaining timeout for DHCP wait
-        // use 10 seconds for DHCP if we still have time, or minimum 5 seconds
         uint32_t dhcp_timeout_ms = (timeout_ms > 10000) ? 10000 : 5000;
         absolute_time_t deadline = make_timeout_time_ms(dhcp_timeout_ms);
 
@@ -290,13 +289,12 @@ int wifi_connect(const char* ssid, const char* password, wifi_auth_t auth, uint3
                    status == WIFI_STATUS_BADAUTH) {
             result = (int)status;
         } else if (status == WIFI_STATUS_JOIN || status == WIFI_STATUS_NOIP) {
-            // timed out waiting for DHCP but WiFi is associated
-            // return timeout error but still store SSID since we're partially connected
+            // timed out waiting for dhcp but wifi is associated
             result = WIFI_STATUS_FAIL;
         }
     }
 
-    // store SSID on success, clear on failure
+    // store ssid on success, clear on failure
     if (result == 0) {
         strncpy(connected_ssid, ssid, sizeof(connected_ssid) - 1);
         connected_ssid[sizeof(connected_ssid) - 1] = '\0';

@@ -1,6 +1,6 @@
 /*
- * TLS socket driver implementation for PicoCalc
- * Uses lwIP altcp_tls with mbedTLS for HTTPS support
+ * TLS socket driver for PicoCalc
+ * uses lwIP altcp_tls with mbedTLS
  */
 #include "tls.h"
 #include "wifi.h"
@@ -18,11 +18,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Global TLS config (shared, no cert verification)
+// global tls config (shared, no cert verification)
 static struct altcp_tls_config* g_tls_config = NULL;
 static int g_tls_init_count = 0;
 
-// Helper to copy data into circular buffer
+// copy data to circular buffer
 static size_t tls_recv_buf_write(tls_socket_t* sock, const uint8_t* data, size_t len) {
     size_t written = 0;
     while (written < len && sock->recv_len < TLS_RECV_BUF_SIZE) {
@@ -34,7 +34,7 @@ static size_t tls_recv_buf_write(tls_socket_t* sock, const uint8_t* data, size_t
     return written;
 }
 
-// Helper to read data from circular buffer
+// read data from buffer
 static size_t tls_recv_buf_read(tls_socket_t* sock, uint8_t* data, size_t maxlen) {
     size_t rd = 0;
     while (rd < maxlen && sock->recv_len > 0) {
@@ -51,7 +51,7 @@ static err_t tls_recv_callback(void* arg, struct altcp_pcb* pcb, struct pbuf* p,
     tls_socket_t* sock = (tls_socket_t*)arg;
 
     if (p == NULL) {
-        // Connection closed
+        // connection closed
         sock->connected = false;
         sock->last_error = TLS_ERR_CLOSED;
         return ERR_OK;
@@ -63,32 +63,32 @@ static err_t tls_recv_callback(void* arg, struct altcp_pcb* pcb, struct pbuf* p,
         return err;
     }
 
-    // Copy data to receive buffer
+    // copy data to receive buffer
     struct pbuf* q = p;
     size_t total_copied = 0;
     while (q != NULL) {
         size_t copied = tls_recv_buf_write(sock, (uint8_t*)q->payload, q->len);
         total_copied += copied;
         if (copied < q->len) {
-            break;  // Buffer full
+            break;  // buffer full
         }
         q = q->next;
     }
 
-    // Acknowledge received data
+    // ack received data
     altcp_recved(pcb, total_copied);
     pbuf_free(p);
 
     return ERR_OK;
 }
 
-// altcp error callback
+// altcp err callback
 static void tls_err_callback(void* arg, err_t err) {
     tls_socket_t* sock = (tls_socket_t*)arg;
 
     sock->connected = false;
     sock->handshake_done = false;
-    sock->pcb = NULL;  // PCB is already freed
+    sock->pcb = NULL;  // pcb already freed
 
     switch (err) {
         case ERR_ABRT:
@@ -124,6 +124,7 @@ static err_t tls_connected_callback(void* arg, struct altcp_pcb* pcb, err_t err)
     return ERR_OK;
 }
 
+// init
 int tls_init(void) {
     if (g_tls_init_count > 0) {
         g_tls_init_count++;
@@ -135,7 +136,7 @@ int tls_init(void) {
     }
 
     cyw43_arch_lwip_begin();
-    // Create client config with no CA cert = no verification
+    // create client config,  no CA cert = no verification
     g_tls_config = altcp_tls_create_config_client(NULL, 0);
     cyw43_arch_lwip_end();
 
@@ -147,6 +148,7 @@ int tls_init(void) {
     return TLS_OK;
 }
 
+// deinit
 void tls_deinit(void) {
     if (g_tls_init_count > 0) {
         g_tls_init_count--;
@@ -164,7 +166,7 @@ tls_socket_t* tls_socket_create(void) {
         return NULL;
     }
 
-    // Auto-init TLS if not done
+    // auto-init tls if not done
     if (g_tls_config == NULL) {
         if (tls_init() != TLS_OK) {
             return NULL;
@@ -195,7 +197,7 @@ tls_socket_t* tls_socket_create(void) {
     sock->op_complete = false;
     sock->timeout_ms = 0;
 
-    // Set callbacks
+    // set callbacks
     cyw43_arch_lwip_begin();
     altcp_arg(sock->pcb, sock);
     altcp_recv(sock->pcb, tls_recv_callback);
@@ -237,14 +239,14 @@ int tls_socket_connect(tls_socket_t* sock, const char* host, uint16_t port, uint
         return TLS_ERR_FAILED;
     }
 
-    // Resolve hostname using socket driver's DNS
+    // resolve hostname using socket driver's dns
     char ip_str[16];
     ip_addr_t addr;
 
     if (ip4addr_aton(host, ip_2_ip4(&addr))) {
-        // Valid IP address
+        // valid IP address
     } else {
-        // Try DNS resolution
+        // try dns resolution
         int err = socket_dns_resolve(host, ip_str, sizeof(ip_str));
         if (err != SOCKET_OK) {
             return TLS_ERR_DNS;
@@ -252,11 +254,11 @@ int tls_socket_connect(tls_socket_t* sock, const char* host, uint16_t port, uint
         ip4addr_aton(ip_str, ip_2_ip4(&addr));
     }
 
-    // Reset operation state
+    // reset state
     sock->op_complete = false;
     sock->last_error = TLS_OK;
 
-    // Initiate connection (includes TLS handshake)
+    // initiate connection (includes tls handshake)
     cyw43_arch_lwip_begin();
     err_t err = altcp_connect(sock->pcb, &addr, port, tls_connected_callback);
     cyw43_arch_lwip_end();
@@ -265,7 +267,7 @@ int tls_socket_connect(tls_socket_t* sock, const char* host, uint16_t port, uint
         return TLS_ERR_FAILED;
     }
 
-    // Wait for connection + handshake with timeout
+    // wait for connection  nd handshake with timeout
     uint32_t start = to_ms_since_boot(get_absolute_time());
     uint32_t effective_timeout = timeout_ms > 0 ? timeout_ms : 30000;
 
@@ -296,20 +298,20 @@ int tls_socket_send(tls_socket_t* sock, const void* data, size_t len) {
 
     cyw43_arch_lwip_begin();
 
-    // Check available send buffer
+    // check available send buffer
     u16_t available = altcp_sndbuf(sock->pcb);
     if (available == 0) {
         cyw43_arch_lwip_end();
         return TLS_ERR_WOULDBLOCK;
     }
 
-    // Limit to available buffer
+    // limit to available buffer
     size_t to_send = len;
     if (to_send > available) {
         to_send = available;
     }
 
-    // Write data
+    // write data
     err_t err = altcp_write(sock->pcb, data, to_send, TCP_WRITE_FLAG_COPY);
     if (err != ERR_OK) {
         cyw43_arch_lwip_end();
@@ -319,7 +321,7 @@ int tls_socket_send(tls_socket_t* sock, const void* data, size_t len) {
         return TLS_ERR_FAILED;
     }
 
-    // Flush output
+    // flush output
     err = altcp_output(sock->pcb);
     cyw43_arch_lwip_end();
 
@@ -342,7 +344,7 @@ int tls_socket_receive(tls_socket_t* sock, void* buf, size_t maxlen, uint32_t ti
     uint32_t start = to_ms_since_boot(get_absolute_time());
     uint32_t effective_timeout = timeout_ms > 0 ? timeout_ms : sock->timeout_ms;
 
-    // Wait for data
+    // wait for data
     while (sock->recv_len == 0) {
         if (!sock->connected) {
             if (sock->last_error != TLS_OK) {
@@ -361,7 +363,7 @@ int tls_socket_receive(tls_socket_t* sock, void* buf, size_t maxlen, uint32_t ti
         }
     }
 
-    // Read from buffer
+    // read from buffer
     size_t rd = tls_recv_buf_read(sock, (uint8_t*)buf, maxlen);
     return (int)rd;
 }
