@@ -491,6 +491,62 @@ static int l_draw_sprite_blit(lua_State* L) {
 	return 0;
 }
 
+static int l_draw_screenshot(lua_State* L) {
+	const char* filename = luaL_checkstring(L, 1);
+	int result = lcd_screenshot(filename);
+
+	if (result == 0) {
+		lua_pushboolean(L, 1);
+		return 1;
+	}
+
+	lua_pushnil(L);
+	switch (result) {
+		case -1:
+			lua_pushstring(L, "Screenshot requires buffer mode (PSRAM or RAM). Use draw.enableBuffer(1) first.");
+			break;
+		case -2:
+			lua_pushstring(L, "Failed to create file");
+			break;
+		case -3:
+			lua_pushstring(L, "Failed to write to file");
+			break;
+		default:
+			lua_pushstring(L, "Screenshot failed");
+			break;
+	}
+	return 2;
+}
+
+static int l_draw_show_bmp(lua_State* L) {
+	const char* filename = luaL_checkstring(L, 1);
+	int x = luaL_optinteger(L, 2, 0);
+	int y = luaL_optinteger(L, 3, 0);
+
+	int result = lcd_show_bmp(filename, x, y);
+	if (result == 0) {
+		lua_pushboolean(L, 1);
+		return 1;
+	}
+
+	lua_pushnil(L);
+	switch (result) {
+		case -1:
+			lua_pushstring(L, "Cannot open file");
+			break;
+		case -2:
+			lua_pushstring(L, "Invalid or unsupported BMP format");
+			break;
+		case -3:
+			lua_pushstring(L, "Error reading file");
+			break;
+		default:
+			lua_pushstring(L, "Unknown error");
+			break;
+	}
+	return 2;
+}
+
 int luaopen_draw(lua_State *L) {
 	static const luaL_Reg drawlib_f [] = {
 		{"text", l_draw_text},
@@ -506,6 +562,8 @@ int luaopen_draw(lua_State *L) {
 		{"triangle", l_draw_triangle_shaded},
 		{"enableBuffer", l_draw_buffer_enable},
 		{"blitBuffer", l_draw_buffer_blit},
+		{"screenshot", l_draw_screenshot},
+		{"showBMP", l_draw_show_bmp},
 		{"newSprites", l_draw_new_spritesheet},
 		{"loadSprites", l_draw_load_spritesheet},
 		{"loadBMPSprites", l_draw_load_spritesheet_bmp},

@@ -1,5 +1,5 @@
 /*
- * Socket bindings for picocalc_lua
+ * socket bindings for picocalc_lua
  */
 #pragma once
 

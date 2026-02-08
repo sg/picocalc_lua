@@ -29,9 +29,10 @@ static int l_wifi_init(lua_State* L) {
 }
 
 // wifi.deinit() -> error
-// Note: deinit is disabled because the Pico SDK's async_context_poll mode
-// is not multi-core safe. Calling cyw43_arch_deinit() from Core 1 (Lua)
-// while Core 0 runs wifi_poll() causes a deadlock. 
+// note: deinit is disabled because the pico sdk's async_context_poll mode
+// is not multi-core safe. 
+// calling cyw43_arch_deinit() from Core 1 (Lua)while Core 0 runs
+// wifi_poll() causes a deadlock. 
 static int l_wifi_deinit(lua_State* L) {
     return luaL_error(L, "wifi.deinit() not supported (causes system freeze). Just power off your PicoCalc if you need to completely reset wifi for some reason.");
 }
@@ -87,7 +88,7 @@ static int l_wifi_scan(lua_State* L) {
             lua_pushboolean(L, r->auth_mode != 0);
             lua_setfield(L, -2, "secure");
 
-            // authMode (raw value)
+            // authMode
             lua_pushinteger(L, r->auth_mode);
             lua_setfield(L, -2, "authMode");
 
