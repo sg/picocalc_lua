@@ -1,6 +1,6 @@
 /*
- * Socket driver implementation for PicoCalc
- * Uses lwIP API for TCP/UDP
+ * TCP/UDP socket driver for PicoCalc
+ * uses lwIP API
  */
 #include "socket.h"
 #include "wifi.h"
@@ -44,6 +44,46 @@ static size_t recv_buf_read(socket_handle_t* sock, uint8_t* data, size_t maxlen)
     return read;
 }
 
+// drain pending pbuf into circular buffer
+// pending_pbuf holds the entire pbuf chain, pending_pbuf_offset is the
+// byte offset into the chain (across all segments) where uncopied data starts
+static size_t drain_pending_pbuf(socket_handle_t* sock) {
+    size_t total_copied = 0;
+    struct pbuf* p = sock->pending_pbuf;
+
+    while (p != NULL && sock->pending_pbuf_offset < p->tot_len) {
+        u16_t seg_off;
+        struct pbuf* seg = pbuf_skip(p, (u16_t)sock->pending_pbuf_offset, &seg_off);
+        if (seg == NULL) break;
+
+        uint8_t* data = (uint8_t*)seg->payload + seg_off;
+        size_t avail = seg->len - seg_off;
+
+        size_t copied = recv_buf_write(sock, data, avail);
+        total_copied += copied;
+        sock->pending_pbuf_offset += copied;
+
+        if (copied < avail) {
+            // buffer full again, stop
+            break;
+        }
+    }
+
+    // if all data drained, free the pbuf
+    if (p != NULL && sock->pending_pbuf_offset >= p->tot_len) {
+        pbuf_free(p);
+        sock->pending_pbuf = NULL;
+        sock->pending_pbuf_offset = 0;
+    }
+
+    // ACK the bytes we just drained so the TCP window reopens
+    if (total_copied > 0 && sock->pcb.tcp != NULL) {
+        tcp_recved(sock->pcb.tcp, total_copied);
+    }
+
+    return total_copied;
+}
+
 // TCP receive callback
 static err_t tcp_recv_callback(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err) {
     socket_handle_t* sock = (socket_handle_t*)arg;
@@ -61,20 +101,42 @@ static err_t tcp_recv_callback(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, 
         return err;
     }
 
-    // copy data to receive buffer
-    struct pbuf* q = p;
-    size_t total_copied = 0;
-    while (q != NULL) {
-        size_t copied = recv_buf_write(sock, (uint8_t*)q->payload, q->len);
-        total_copied += copied;
-        if (copied < q->len) {
-            // buffer full, can't accept more
-            break;
-        }
-        q = q->next;
+    // if there's already a pending pbuf, chain the new one onto it
+    if (sock->pending_pbuf != NULL) {
+        pbuf_cat(sock->pending_pbuf, p);
+        // try to drain what we can
+        drain_pending_pbuf(sock);
+        return ERR_OK;
     }
 
-    // ack received data
+    // copy data to receive buffer
+    size_t total_copied = 0;
+    size_t offset = 0;
+
+    // walk the pbuf chain using pbuf_skip to handle segments
+    while (offset < p->tot_len) {
+        u16_t seg_off;
+        struct pbuf* seg = pbuf_skip(p, (u16_t)offset, &seg_off);
+        if (seg == NULL) break;
+
+        uint8_t* data = (uint8_t*)seg->payload + seg_off;
+        size_t avail = seg->len - seg_off;
+
+        size_t copied = recv_buf_write(sock, data, avail);
+        total_copied += copied;
+        offset += copied;
+
+        if (copied < avail) {
+            // buffer full -- retain the pbuf and record where we stopped
+            sock->pending_pbuf = p;
+            sock->pending_pbuf_offset = offset;
+            // ACK only what we copied
+            tcp_recved(tpcb, total_copied);
+            return ERR_OK;
+        }
+    }
+
+    // all data copied successfully
     tcp_recved(tpcb, total_copied);
     pbuf_free(p);
 
@@ -144,6 +206,8 @@ static err_t tcp_accept_callback(void* arg, struct tcp_pcb* newpcb, err_t err) {
     client->recv_head = 0;
     client->recv_tail = 0;
     client->recv_len = 0;
+    client->pending_pbuf = NULL;
+    client->pending_pbuf_offset = 0;
     client->last_error = SOCKET_OK;
     client->op_complete = false;
     client->timeout_ms = 0;
@@ -211,6 +275,8 @@ socket_handle_t* socket_tcp_create(void) {
     sock->recv_head = 0;
     sock->recv_tail = 0;
     sock->recv_len = 0;
+    sock->pending_pbuf = NULL;
+    sock->pending_pbuf_offset = 0;
     sock->last_error = SOCKET_OK;
     sock->op_complete = false;
     sock->timeout_ms = 0;
@@ -277,12 +343,21 @@ void socket_close(socket_handle_t* sock) {
     cyw43_arch_lwip_begin();
 
     if (sock->type == SOCKET_TYPE_TCP) {
+        // free any pending pbuf
+        if (sock->pending_pbuf != NULL) {
+            pbuf_free(sock->pending_pbuf);
+            sock->pending_pbuf = NULL;
+        }
+
         // clean up accept queue for listening sockets
         while (sock->accept_queue != NULL) {
             socket_handle_t* pending = sock->accept_queue;
             sock->accept_queue = pending->next_pending;
             if (pending->pcb.tcp != NULL) {
                 tcp_abort(pending->pcb.tcp);
+            }
+            if (pending->pending_pbuf != NULL) {
+                pbuf_free(pending->pending_pbuf);
             }
             free(pending);
         }
@@ -430,6 +505,15 @@ int socket_receive(socket_handle_t* sock, void* buf, size_t maxlen, uint32_t tim
         return SOCKET_ERR_INVAL;
     }
 
+    // drain any pending pbuf overflow before checking buffer state
+    // (the callback may have saved data here that hasn't reached the
+    // circular buffer yet -- must drain before we declare "no data")
+    if (sock->pending_pbuf != NULL) {
+        cyw43_arch_lwip_begin();
+        drain_pending_pbuf(sock);
+        cyw43_arch_lwip_end();
+    }
+
     if (!sock->connected && sock->recv_len == 0) {
         return SOCKET_ERR_NOTCONN;
     }
@@ -457,8 +541,16 @@ int socket_receive(socket_handle_t* sock, void* buf, size_t maxlen, uint32_t tim
         }
     }
 
-    // read from buffer
+    // read from buffer and drain pending under the lwIP lock so that
+    // recv_buf_read (decrementing recv_len) can't race with
+    // recv_buf_write in the callback IRQ (incrementing recv_len)
+    cyw43_arch_lwip_begin();
     size_t read = recv_buf_read(sock, (uint8_t*)buf, maxlen);
+    if (sock->pending_pbuf != NULL) {
+        drain_pending_pbuf(sock);
+    }
+    cyw43_arch_lwip_end();
+
     return (int)read;
 }
 
@@ -677,7 +769,7 @@ void socket_settimeout(socket_handle_t* sock, uint32_t timeout_ms) {
     sock->timeout_ms = timeout_ms;
 }
 
-// DNS resolution callback state
+// dns resolution callback state
 typedef struct {
     volatile bool done;
     volatile bool success;
@@ -798,7 +890,7 @@ typedef struct {
     uint16_t id;
 } ping_state_t;
 
-// ICMP receive callback - called when any ICMP packet is received
+// ICMP receive callback 
 static uint8_t ping_recv_callback(void* arg, struct raw_pcb* pcb,
                                    struct pbuf* p, const ip_addr_t* addr) {
     ping_state_t* state = (ping_state_t*)arg;
@@ -878,7 +970,7 @@ int socket_ping(const char* host, uint32_t timeout_ms, ping_result_t* result) {
         .time_ms = 0,
         .ttl = 0,
         .seq = PP_HTONS(ping_seq++),
-        .id = PP_HTONS(0x31337)  // arbitrary identifier
+        .id = PP_HTONS(0x31337)  // arbitrary identifier ;)
     };
 
     // create raw PCB for ICMP
