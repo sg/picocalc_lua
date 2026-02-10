@@ -1321,7 +1321,7 @@ void runProgram() {
 
 	if(status != LUA_OK) {
 		const char *msg = lua_tostring(L_state, -1);
-		lua_writestringerror("%s\n", msg);
+		fprintf(stderr, "%s\n", msg);
 	}
 	
 	printf("\x1b[%d;%dHPress any key...", E.screenrows+2, 1);

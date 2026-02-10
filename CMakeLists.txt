@@ -31,7 +31,7 @@ include(pico_sdk_import.cmake)
 project(picolua)
 pico_sdk_init()
 
-add_subdirectory(submodules/lua-5.4.8)
+add_subdirectory(submodules/lua-5.5.0/src)
 add_subdirectory(submodules/pico_fatfs)
 add_subdirectory(submodules/rp2040-psram)
 add_subdirectory(submodules/kilo)
