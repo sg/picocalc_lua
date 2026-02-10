@@ -56,7 +56,7 @@ static int l_fs_open(lua_State* L) {
 //f_close - Close an open file
 static int l_fs_close(lua_State* L) {
 	FIL* fp = checkfile(L);
-	if (fp) {
+	if (fp && fp->obj.fs) {
 		FRESULT result = f_close(fp);
 		if (result != FR_OK) return luaL_error(L, fs_error_strings[result]);
 	}

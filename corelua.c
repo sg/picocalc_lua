@@ -32,7 +32,7 @@ static void l_print (lua_State *L) {
 		luaL_checkstack(L, LUA_MINSTACK, "too many results to print");
 		lua_getglobal(L, "print");
 		lua_insert(L, 1);
-		if (lua_pcall(L, n, 0, 0) != LUA_OK) lua_writestringerror("error calling 'print' (%s)", lua_tostring(L, -1));
+		if (lua_pcall(L, n, 0, 0) != LUA_OK) fprintf(stderr, "error calling 'print' (%s)", lua_tostring(L, -1));
 	}
 }
 
@@ -91,7 +91,7 @@ void lua_main() {
 	// lower makes interrupt more responsive
 	// instant interrupt (calling luaG_runerror inside keyboard_interrupt) causes hang
 	lua_sethook(L, lua_interrupt, LUA_MASKCOUNT, 50);
-	luaL_openlibs(L);
+	luaL_openselectedlibs(L, ~LUA_IOLIBK, 0);
 
 	modules_register_wrappers(L);
 	int mounted = fs_mount();
@@ -131,12 +131,12 @@ void lua_main() {
 		} else lua_remove(L, -2);
 		if (status != LUA_OK) {
 			const char *msg = lua_tostring(L, -1);
-			lua_writestringerror("%s\n", msg);
+			fprintf(stderr, "%s\n", msg);
 		} else {
 			status = lua_pcall(L, 0, LUA_MULTRET, 0);
 			if(status != LUA_OK) {
 				const char *msg = lua_tostring(L, -1);
-				lua_writestringerror("%s\n", msg);
+				fprintf(stderr, "%s\n", msg);
 			} else {
 				printf("\x1b[96m");
 				l_print(L);

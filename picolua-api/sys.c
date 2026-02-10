@@ -182,7 +182,7 @@ void sys_timer_execute(lua_State* L) {
 	luaL_unref(L, LUA_REGISTRYINDEX, callback_reference); // clear old reference
 	callback_reference = 0;
 	if (0 != lua_pcall(L, 0, 0, 0)) { //call from stack (pops)
-		lua_writestringerror("%s", lua_tostring(L, -1));
+		fprintf(stderr, "%s", lua_tostring(L, -1));
 		cancel_repeating_timer(&sys_timer);
 	}
 	callback_reference = luaL_ref(L, LUA_REGISTRYINDEX); // register new reference from stack
