@@ -15,7 +15,9 @@
 #include "drivers/fs.h"
 #include "drivers/sound.h"
 #include "drivers/multicore.h"
+#ifdef PICOCALC_HAS_WIFI
 #include "drivers/wifi.h"
+#endif
 #include "picolua-api/sys.h"
 
 #include "corelua.h"
@@ -40,8 +42,10 @@ int main() {
 			atomic_store(&fs_needs_remount, false);
 		}
 
+#ifdef PICOCALC_HAS_WIFI
 		// process wi-fi background tasks
 		wifi_poll();
+#endif
 
 		#if PICO_RP2040
 		//sleep_ms(10);

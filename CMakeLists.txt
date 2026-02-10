@@ -12,7 +12,9 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-set(PICO_BOARD pico2_w CACHE STRING "Board type")
+if(NOT PICO_BOARD)
+    set(PICO_BOARD pico2_w CACHE STRING "Board type")
+endif()
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -64,15 +66,24 @@ target_link_libraries(picolua
 	#hardware_exception
 	#hardware_pio
 	pico_multicore
-	pico_cyw43_arch_lwip_threadsafe_background
-	pico_lwip_mbedtls
-	pico_mbedtls
 	lua
 	drivers
 	pico_fatfs
 	kilo
 	picolua-api
 )
+
+if(PICO_CYW43_SUPPORTED)
+	message(STATUS "WiFi support enabled")
+	target_link_libraries(picolua
+		pico_cyw43_arch_lwip_threadsafe_background
+		pico_lwip_mbedtls
+		pico_mbedtls
+	)
+	target_compile_definitions(picolua PRIVATE PICOCALC_HAS_WIFI=1)
+else()
+	message(STATUS "WiFi support disabled")
+endif()
 
 target_compile_definitions(picolua PRIVATE
 	# rp2040-psram
