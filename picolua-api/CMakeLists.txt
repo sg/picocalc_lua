@@ -18,10 +18,15 @@ target_sources(picolua-api INTERFACE
 	draw.c
 	term.c
 	sound.c
-	wifi.c
-	socket.c
 	psram.c
 )
+
+if(PICO_CYW43_SUPPORTED)
+	target_sources(picolua-api INTERFACE
+		wifi.c
+		socket.c
+	)
+endif()
 
 target_link_libraries(picolua-api INTERFACE
 	pico_stdlib

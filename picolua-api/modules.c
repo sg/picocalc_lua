@@ -6,8 +6,10 @@
 #include "draw.h"
 #include "term.h"
 #include "sound.h"
+#ifdef PICOCALC_HAS_WIFI
 #include "wifi.h"
 #include "socket.h"
+#endif
 #include "psram.h"
 #include "../corelua.h"
 #include "../drivers/draw.h"
@@ -66,8 +68,10 @@ void modules_register_wrappers(lua_State *L) {
 	luaL_requiref(L, "draw", &luaopen_draw, 1);
 	luaL_requiref(L, "colors", &luaopen_color, 1);
 	luaL_requiref(L, "sound", &luaopen_sound, 1);
+#ifdef PICOCALC_HAS_WIFI
 	luaL_requiref(L, "wifi", &luaopen_wifi, 1);
 	luaL_requiref(L, "socket", &luaopen_socket, 1);
+#endif
 	luaL_requiref(L, "psram", &luaopen_psram, 1);
 
 	lua_register(L, "edit", l_fs_editor);
