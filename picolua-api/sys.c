@@ -238,8 +238,16 @@ int luaopen_sys(lua_State *L) {
 	
 	luaL_newlib(L, syslib_f);
 
-	//lua_pushcharconstant(L, "board", PICO_BOARD);
-	
+	lua_pushstring(L, PICO_BOARD);
+	lua_setfield(L, -2, "board");
+
+#ifdef PICOCALC_HAS_WIFI
+	lua_pushboolean(L, 1);
+#else
+	lua_pushboolean(L, 0);
+#endif
+	lua_setfield(L, -2, "hasWifi");
+
 	return 1;
 }
 

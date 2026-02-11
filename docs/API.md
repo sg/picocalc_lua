@@ -3,6 +3,8 @@
 This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) API in order to facilitate porting of existing software.
 
 - [`sys` - System functions](#sys---system-functions)
+	- [`board`](#board)
+	- [`hasWifi`](#haswifi)
 	- [`freeMemory()`](#freememory)
 	- [`totalMemory()`](#totalmemory)
 	- [`reset()`](#reset)
@@ -158,6 +160,16 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 
 
 # `sys` - System functions
+
+## `board`
+The Pico board type as a string (e.g., `"pico"`, `"pico_w"`, `"pico2"`, `"pico2_w"`, `"pimoroni_pico_plus2_w_rp2350"`)
+
+**Type:** `string`
+
+## `hasWifi`
+Whether the board has Wi-Fi support
+
+**Type:** `boolean`
 
 ## `freeMemory()`
 Returns the amount of unused memory
