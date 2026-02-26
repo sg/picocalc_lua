@@ -10,6 +10,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "xxd",
+  category = "util",
   aliases = {"hexdump"},
   help = c.cyan.."xxd"..c.yellow.." <file> [count]"..c.white.." - print hex/ascii values of file",
   run = function(args, sh)

@@ -10,6 +10,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "show",
+  category = "util",
   aliases = {"view", "display"},
   help = c.cyan.."show"..c.yellow.." <file.bmp>"..c.white.." - display BMP image on screen",
   run = function(args, sh)

@@ -5,6 +5,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
     name = "zplay",
+    category = "games",
     aliases = {"zork", "zmachine"},
     help = c.cyan .. "zplay" .. c.yellow .. " <story_file>" .. c.white .. " run z-machine for <story_file>",
 

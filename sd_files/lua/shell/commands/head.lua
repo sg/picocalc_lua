@@ -9,6 +9,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "head",
+  category = "util",
   help = c.cyan.."head"..c.yellow.." <file> [n]"..c.white.." - print top n lines of a file",
   run = function(args, sh)
     if not args[1] then

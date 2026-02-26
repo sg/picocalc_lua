@@ -5,6 +5,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
     name = "zinfo",
+    category = "games",
     aliases = {},
     help = c.cyan .. "zinfo" .. c.yellow .. " <story_file>" .. c.white .. " - show info for z-story_file",
 

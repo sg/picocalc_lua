@@ -403,6 +403,7 @@ end
 ------------------------------------------------------------
 return {
   name = "tar",
+  category = "util",
   help = c.cyan .. "tar" .. c.yellow .. " <c|x|t> <archive> [files...]"
     .. c.white .. " - tar archive tool",
   run = function(args, sh)

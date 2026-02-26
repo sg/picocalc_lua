@@ -9,6 +9,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "buffer",
+  category = "util",
   help = c.cyan.."buffer"..c.yellow.." [on|off]"..c.white.." - PSRAM buffer mode for screenshots",
   run = function(args, sh)
     local mode = args[1]

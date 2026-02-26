@@ -10,6 +10,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "ss",
+  category = "util",
   aliases = {"screenshot"},
   help = c.cyan.."ss"..c.yellow.." [filename]"..c.white.." - save screenshot to BMP file",
   run = function(args, sh)

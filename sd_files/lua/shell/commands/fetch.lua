@@ -10,6 +10,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "fetch",
+  category = "net",
   aliases = {"wget"},
   help = c.cyan.."fetch"..c.yellow.." [-d] <url> [file]"..c.white.." - download URL [to file]",
   run = function(args, sh)

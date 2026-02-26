@@ -13,6 +13,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "mesh",
+  category = "net",
   help = c.cyan.."mesh"..c.yellow.." [-v] [host] [port] [logfile]"..c.white.." - MeshCore radio client",
   run = function(args, sh)
     if args then

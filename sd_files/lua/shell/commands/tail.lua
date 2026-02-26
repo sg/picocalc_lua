@@ -7,6 +7,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "tail",
+  category = "util",
   help = c.cyan.."tail"..c.yellow.." <file> [n]"..c.white.." - print last n lines [default 10]",
   run = function(args, sh)
     if not args[1] then

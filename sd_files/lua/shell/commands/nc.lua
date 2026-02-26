@@ -14,6 +14,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "nc",
+  category = "net",
   aliases = {"netcat"},
   help = c.cyan.."nc"..c.yellow.." [-l] [-u] <host> <port>"..c.white.." - netcat network utility",
   run = function(args, sh)

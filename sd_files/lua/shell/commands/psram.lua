@@ -19,6 +19,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "psram",
+  category = "util",
   aliases = {"psr",},
   help = c.cyan.."psram"..c.yellow.." list|stats|alloc|write|read|free|freeall" .. c.white,
   run = function(args, sh)

@@ -17,6 +17,7 @@ end
 
 return {
   name = "wx",
+  category = "net",
   aliases = {"weather"},
   help = c.cyan.."wx"..c.yellow..""..c.white.." - download weather forecast",
   run = function(args, sh)

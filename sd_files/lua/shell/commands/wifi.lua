@@ -9,6 +9,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "wifi",
+  category = "net",
   aliases = {"wf","wlan"},
   help = c.cyan.."wifi"..c.yellow.." [status|on|off|scan]"..c.white.." - manage Wi-Fi connection",
   run = function(args, sh)

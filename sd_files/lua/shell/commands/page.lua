@@ -445,6 +445,7 @@ end
 
 return {
   name = "page",
+  category = "util",
   aliases = {"less", "more"},
   help = COLOR.cyan .. "page" .. COLOR.yellow .. " <file>" .. COLOR.white .. " - view file with scrolling",
   run = function(args, sh)
