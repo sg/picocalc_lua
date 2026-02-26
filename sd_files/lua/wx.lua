@@ -135,3 +135,7 @@ for k, v in pairs(current_wx) do
 end
 print("")
 
+package.loaded["lua/modules/http"] = nil
+package.loaded["lua/modules/json"] = nil
+package.loaded["lua/modules/serialize"] = nil
+collectgarbage()
