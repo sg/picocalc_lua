@@ -157,6 +157,26 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 	- [`http.post(url, body, [content_type], [options])`](#httpposturl-body-content_type-options)
 	- [`http.urlencode(str)`](#httpurlencodestr)
 	- [`http.encode_params(params)`](#httpencode_paramsparams)
+- [`psram` - PSRAM buffer management](#psram---psram-buffer-management)
+	- [`alloc(size, [name])`](#allocsize-name)
+	- [`free(handle_or_name)`](#freehandle_or_name)
+	- [`find(name)`](#findname)
+	- [`getName(handle)`](#getnamehandle)
+	- [`setName(handle, name)`](#setnamehandle-name)
+	- [`write(handle, offset, data)`](#writehandle-offset-data)
+	- [`read(handle, offset, length)`](#readhandle-offset-length)
+	- [`size(handle)`](#sizehandle)
+	- [`fill(handle, offset, length, byte)`](#fillhandle-offset-length-byte)
+	- [`copy(dest, dest_offset, src, src_offset, length)`](#copydest-dest_offset-src-src_offset-length)
+	- [`stats()`](#stats)
+	- [`list()`](#list)
+	- [`freeAll()`](#freeall)
+	- [Constants](#constants-6)
+- [`gzip` - Gzip decompression](#gzip---gzip-decompression)
+	- [`gzip.open(path)`](#gzipopenpath)
+	- [`GzipReader:read(size)`](#gzipreaderreadsize)
+	- [`GzipReader:seek(whence, offset)`](#gzipreaderseekwhence-offset)
+	- [`GzipReader:close()`](#gzipreaderclose)
 
 
 # `sys` - System functions
@@ -1472,3 +1492,208 @@ Encode a table of parameters for form submission
 * `http.TIMEOUT` - Set timeout in seconds (default is 30)
 * `http.MAX_REDIRECTS` - Maximum redirects to follow (default is 5)
 * `http.USER_AGENT` - Set User-Agent header
+
+
+# `psram` - PSRAM buffer management
+
+The PSRAM module provides access to 8MB of external PSRAM for storing large data buffers that won't fit in the Lua heap. Buffers are identified by numeric handles (addresses) and can optionally be given string names for easier lookup. On boards with QSPI PSRAM (e.g., Pimoroni Pico Plus 2W), access is memory-mapped and fast. On SPI-based boards, access goes through SPI transfers.
+
+If the LCD framebuffer is in PSRAM mode (`draw.enableBuffer(1)`), approximately 200KB is reserved for it and unavailable for allocations.
+
+## `alloc(size, [name])`
+Allocate a PSRAM buffer
+
+**Parameters**
+1. `size : number` - Size in bytes to allocate (will be aligned to 4 bytes)
+2. `name : string` - Optional name for the allocation (max 31 characters)
+
+**Returns**
+1. `number | nil` - Handle (address) for the allocation, or nil on failure
+2. `string` - Error message if allocation failed
+
+## `free(handle_or_name)`
+Free a PSRAM allocation
+
+**Parameters**
+1. `handle_or_name : number | string` - The handle returned by `alloc()`, or the name of a named allocation
+
+**Returns**
+1. `boolean | nil` - True on success, or nil on failure
+2. `string` - Error message if free failed
+
+## `find(name)`
+Find an allocation by name
+
+**Parameters**
+1. `name : string` - The name to search for
+
+**Returns**
+1. `number | nil` - Handle (address) of the named allocation, or nil if not found
+2. `string` - Error message if not found
+
+## `getName(handle)`
+Get the name of an allocation
+
+**Parameters**
+1. `handle : number` - The allocation handle
+
+**Returns**
+1. `string | nil` - The name, or nil if unnamed or invalid handle
+2. `string` - Error message if invalid handle
+
+## `setName(handle, name)`
+Set or clear the name of an allocation
+
+**Parameters**
+1. `handle : number` - The allocation handle
+2. `name : string` - The name to set, or nil/empty to clear
+
+**Returns**
+1. `boolean | nil` - True on success, or nil on failure
+2. `string` - Error message if failed
+
+## `write(handle, offset, data)`
+Write data to a PSRAM buffer
+
+**Parameters**
+1. `handle : number` - The allocation handle
+2. `offset : number` - Byte offset within the allocation
+3. `data : string` - The data to write
+
+**Returns**
+1. `number | nil` - Number of bytes written (clamped to allocation bounds), or nil on error
+2. `string` - Error message if failed
+
+## `read(handle, offset, length)`
+Read data from a PSRAM buffer
+
+**Parameters**
+1. `handle : number` - The allocation handle
+2. `offset : number` - Byte offset within the allocation
+3. `length : number` - Number of bytes to read
+
+**Returns**
+1. `string | nil` - The data read (clamped to allocation bounds), or nil on error
+2. `string` - Error message if failed
+
+## `size(handle)`
+Get the size of an allocation
+
+**Parameters**
+1. `handle : number` - The allocation handle
+
+**Returns**
+1. `number | nil` - Size in bytes, or nil if invalid handle
+2. `string` - Error message if invalid handle
+
+## `fill(handle, offset, length, byte)`
+Fill a region of a PSRAM buffer with a byte value
+
+**Parameters**
+1. `handle : number` - The allocation handle
+2. `offset : number` - Byte offset within the allocation
+3. `length : number` - Number of bytes to fill
+4. `byte : number` - Byte value (0-255) to fill with
+
+**Returns**
+1. `number | nil` - Number of bytes filled, or nil on error
+2. `string` - Error message if failed
+
+## `copy(dest, dest_offset, src, src_offset, length)`
+Copy data between PSRAM buffers
+
+**Parameters**
+1. `dest : number` - Destination allocation handle
+2. `dest_offset : number` - Byte offset in destination
+3. `src : number` - Source allocation handle
+4. `src_offset : number` - Byte offset in source
+5. `length : number` - Number of bytes to copy
+
+**Returns**
+1. `number | nil` - Number of bytes copied, or nil on error
+2. `string` - Error message if failed
+
+## `stats()`
+Get PSRAM usage statistics
+
+**Returns**
+1. `table`:
+   * `total : number` - Total PSRAM size in bytes (8388608)
+   * `available : number` - Bytes available for allocation (total minus LCD reserve)
+   * `used : number` - Bytes currently allocated
+   * `free : number` - Bytes available minus used
+   * `allocations : number` - Number of active allocations
+   * `maxAllocations : number` - Maximum number of allocations (32)
+   * `reserved : number` - Bytes reserved for LCD framebuffer (0 if LCD not using PSRAM)
+   * `lcdUsingPsram : boolean` - Whether the LCD framebuffer is in PSRAM mode
+   * `qspi : boolean` - Whether the board uses fast QSPI PSRAM (vs SPI)
+
+## `list()`
+List all active PSRAM allocations
+
+**Returns**
+1. `table` - Array of allocation entries:
+   * `addr : number` - Start address
+   * `size : number` - Size in bytes
+   * `name : string | nil` - Name if set, nil otherwise
+
+## `freeAll()`
+Free all PSRAM allocations
+
+**Returns**
+1. `number` - Number of allocations freed
+2. `number` - Total bytes freed
+
+## Constants
+
+* `TOTAL_SIZE` - Total PSRAM size in bytes (8388608)
+* `LCD_RESERVE_SIZE` - Bytes reserved for LCD framebuffer when in PSRAM mode (204800)
+* `MAX_ALLOCATIONS` - Maximum number of simultaneous allocations (32)
+* `NAME_MAX_LEN` - Maximum length of allocation names (31)
+* `_VERSION` - Module version string
+
+
+# `gzip` - Gzip decompression
+
+The gzip module provides streaming decompression of gzip-compressed files (`.gz`). It exposes a `GzipReader` object that supports the same `:read(n)`, `:seek("cur", n)`, and `:close()` interface as `fs.open()` file handles, making it a drop-in replacement for reading compressed data.
+
+Uses the uzlib library (~1.6KB code) for DEFLATE decompression. Each open reader uses approximately 34KB of memory (32KB sliding window dictionary + decompressor state + 1KB input buffer).
+
+## `gzip.open(path)`
+Open a gzip-compressed file for streaming decompression
+
+**Parameters**
+1. `path : string` - Path to the `.gz` file on the SD card
+
+**Returns**
+1. `GzipReader` - Reader object for decompressing the file, throws error if unable to open or if the file has an invalid gzip header
+
+**Example**
+```lua
+local reader = gzip.open("data.txt.gz")
+local text = reader:read(1024)
+print(text)
+reader:close()
+```
+
+## `GzipReader:read(size)`
+Decompress and return up to `size` bytes from the gzip stream
+
+**Parameters**
+1. `size : number` - Maximum number of bytes to decompress
+
+**Returns**
+1. `string | nil` - The decompressed data, or nil at end of stream
+
+## `GzipReader:seek(whence, offset)`
+Skip forward in the decompressed stream. Only forward seeking is supported since gzip streams cannot be rewound.
+
+**Parameters**
+1. `whence : string` - Must be `"cur"` (only relative-to-current seeking is supported)
+2. `offset : number` - Number of bytes to skip forward (must be positive)
+
+**Returns**
+1. `number` - Always returns 0 (absolute position is not meaningful for gzip streams)
+
+## `GzipReader:close()`
+Close the reader, releasing the file handle and decompression dictionary. Also called automatically by the garbage collector if not explicitly closed.
