@@ -18,6 +18,7 @@
 local rc4 = require("lua/modules/rc4")
 local b64 = require("lua/modules/base64")
 local serialize = require("lua/modules/serialize")
+local c = require("lua/modules/simple-colors")
 
 -- read input with buffer mode support
 -- uses shell's readline (which has auto-blit) when in buffer mode
@@ -124,7 +125,7 @@ local function scanForSSIDsAndConnect()
 
   -- select a network
   print("")
-  local selection = blit_read("Enter number (1-" .. #networks .. "): ")
+  local selection = blit_read(c.yellow .. "Enter number " .. c.white .. "(" .. c.green .. "1-" .. #networks .. c.white .."): ")
   local idx = tonumber(selection)
 
   if not idx or idx < 1 or idx > #networks then
@@ -137,7 +138,7 @@ local function scanForSSIDsAndConnect()
 
   -- get password if network is secured
   if selected.secure then
-    password = blit_read("Password: ")
+    password = blit_read(c.yellow .. "Password: " .. c.white)
     if not password or password == "" then
       print("Password required for secured network")
       return false
@@ -161,8 +162,8 @@ end
 -- check for existing wifi config file
 if fs.exists(wifi_config_path) then
   wifi_config = loadWifiConfig(wifi_config_path)
-  print("Wifi config found for SSID: " .. wifi_config.ssid)
-  if blit_read("Connect to this SSID? [Y]/n: ") ~= "n" then
+  print("Wifi config found for SSID: " .. c.green .. wifi_config.ssid .. c.white)
+  if blit_read(c.yellow .. "Connect to this SSID? " .. c.white .. "[" .. c.green .. "Y" .. c.white .. "]/n: ") ~= "n" then
     -- connect using existing config
     using_config = true
   end
@@ -180,7 +181,7 @@ end
 if not using_config then
   -- init wi-fi if needed
   if not wifi.isInitialized() then
-    wifi_country_code = blit_read("Set Wi-Fi two-letter country code [US]: ")  
+    wifi_country_code = blit_read(c.yellow .. "Set Wi-Fi two-letter country code " .. c.white .. "[" .. c.green .. "US" .. c.white .. "]: ")  
     if wifi_country_code == "" then
       wifi_country_code = "US"
     end
@@ -268,7 +269,7 @@ if not ok then
 end
 
 if not ok then
-  print("Connection failed: " .. (conn_err or "unknown error"))
+  print(c.red .. "Connection failed: " .. c.white .. (conn_err or "unknown error"))
   return
 end
 
@@ -285,21 +286,21 @@ end
 -- display connection info
 if wifi.isConnected() then
   local info = wifi.getInfo()
-  print("\nConnected successfully!")
+  print("\n" .. c.green .. "Connected successfully!" .. c.white)
   if info then
-    print("Network SSID: " .. info.ssid)
-    print("  IP Address: " .. info.ip)
-    --print("     Gateway:    " .. info.gateway)
-    --print("     Netmask:    " .. info.netmask)
+    print(c.cyan .. "Network SSID: " .. c.white .. info.ssid)
+    print(c.cyan .. "  IP Address: " .. c.white .. info.ip)
+    --print(c.cyan .. "     Gateway:    " .. c.white .. info.gateway)
+    --print(c.cyan .. "     Netmask:    " .. c.white .. info.netmask)
   end
 else
-  print("\nConnection timed out waiting for IP")
+  print(c.red .. "\nConnection timed out waiting for IP" .. c.white)
 end
 
 -- if we manually configured wifi info then offer to save
 -- for future use
 if not using_config then
-  if blit_read("Save Wifi connection info to config file? [Y]/n: ") ~= n then
+  if blit_read(c.yellow .. "Save Wifi connection info to config file? " .. c.white .. "[" .. c.green .. "Y" .. c.white .. "]/n: ") ~= n then
     wifi_config.country = wifi_country_code
     wifi_config.ssid = selected.ssid
     wifi_config.pass = encrypt(password, xkey)
