@@ -23,6 +23,11 @@ target_sources(drivers INTERFACE
 	multicore.c
 )
 
+if(PICO_BOARD MATCHES "pimoroni_pico_plus2")
+	target_sources(drivers INTERFACE psram_qspi.c)
+	target_link_libraries(drivers INTERFACE hardware_sync)
+endif()
+
 target_link_libraries(drivers INTERFACE
 	pico_stdlib
 	hardware_spi

@@ -19,7 +19,7 @@ return {
         _G._buffer_mode_blit = true
         -- Clear and show the buffer
         term.clear()
-        draw.blitBuffer()
+        --draw.blitBuffer()
         sh:success("PSRAM buffer mode enabled")
         term.write("Auto-blit active - display will update automatically\n")
         draw.blitBuffer()

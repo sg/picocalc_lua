@@ -85,6 +85,11 @@ else()
 	message(STATUS "WiFi support disabled")
 endif()
 
+if(PICO_BOARD MATCHES "pimoroni_pico_plus2")
+	message(STATUS "Pimoroni QSPI PSRAM support enabled")
+	target_compile_definitions(picolua PRIVATE PICOCALC_QSPI_PSRAM=1)
+endif()
+
 target_compile_definitions(picolua PRIVATE
 	# rp2040-psram
 	#PSRAM_MUTEX=1

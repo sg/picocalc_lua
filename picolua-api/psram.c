@@ -11,11 +11,14 @@
 
 #include "modules.h"
 #include "psram.h"
+#ifdef PICOCALC_QSPI_PSRAM
+#include "../drivers/psram_qspi.h"
+#else
 #include "psram_spi.h"
-#include "../drivers/lcd.h"
-
 // External reference to PSRAM SPI instance (defined in lcd.c)
 extern psram_spi_inst_t psram_spi;
+#endif
+#include "../drivers/lcd.h"
 
 // External reference to LCD framebuffer mode (defined in lcd.c)
 extern int framebuffer_mode;
@@ -159,6 +162,9 @@ bool psram_c_free(uint32_t addr) {
 }
 
 void psram_c_write(uint32_t addr, const uint8_t* data, uint32_t len) {
+#ifdef PICOCALC_QSPI_PSRAM
+    memcpy((void *)(PSRAM_QSPI_BASE + addr), data, len);
+#else
     // Write in chunks - PSRAM library uses uint8_t for bit count
     // write_command[0] = (4 + count) * 8, so max count = (255/8) - 4 = 27 bytes
     // Use 20 bytes to match LCD driver and stay safe
@@ -170,9 +176,13 @@ void psram_c_write(uint32_t addr, const uint8_t* data, uint32_t len) {
         data += to_write;
         len -= to_write;
     }
+#endif
 }
 
 void psram_c_read(uint32_t addr, uint8_t* data, uint32_t len) {
+#ifdef PICOCALC_QSPI_PSRAM
+    memcpy(data, (void *)(PSRAM_QSPI_BASE + addr), len);
+#else
     // Read in chunks - PSRAM library uses uint8_t for bit count
     // read_command[1] = count * 8, so max count = 255/8 = 31 bytes
     // Use 20 bytes to match LCD driver and stay safe
@@ -184,6 +194,7 @@ void psram_c_read(uint32_t addr, uint8_t* data, uint32_t len) {
         data += to_read;
         len -= to_read;
     }
+#endif
 }
 
 // Get size of allocation
@@ -579,6 +590,13 @@ static int l_psram_stats(lua_State* L) {
     // Also indicate if LCD is using PSRAM
     lua_pushboolean(L, framebuffer_mode == LCD_BUFFERMODE_PSRAM);
     lua_setfield(L, -2, "lcdUsingPsram");
+
+#ifdef PICOCALC_QSPI_PSRAM
+    lua_pushboolean(L, true);
+#else
+    lua_pushboolean(L, false);
+#endif
+    lua_setfield(L, -2, "qspi");
 
     return 1;
 }
