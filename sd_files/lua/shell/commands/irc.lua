@@ -14,14 +14,9 @@ return {
   name = "irc",
   help = c.cyan.."irc"..c.yellow.." [server] [port]"..c.white.." - internet relay chat",
   run = function(args, sh)
-    local ok, irc = pcall(require, "lua/irc")
-    if not ok then
-      return sh:error("Failed to load irc: " .. tostring(irc))
-    end
     if args then
-      irc.main(args)
-    else
-      irc.main()
+      arg = args
     end
+    dofile("lua/irc.lua")
   end
 }
