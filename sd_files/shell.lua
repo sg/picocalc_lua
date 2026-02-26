@@ -89,6 +89,7 @@ local file_commands = {
   psr = true,
   zinfo = true,
   zplay = true,
+  tar = true,
 }
 
 
@@ -190,7 +191,6 @@ function shell:is_root(path)
 end
 
 -- parse input into command and arguments
--- to-do: allow escaping quote chars (for 'eval' command)
 function shell:parse_input(input)
   if not input or input == "" then
     return nil, {}
@@ -313,13 +313,13 @@ function shell:complete_path(partial)
 
   -- check for trailing slash (list directory contents)
   if partial:match("/$") then
-    dir_part = partial
+    dir_part = partial:gsub("/+$", "")
     name_part = ""
   else
     -- split into directory and filename parts
     local last_slash = partial:match(".*/()")
     if last_slash then
-      dir_part = partial:sub(1, last_slash - 1)
+      dir_part = partial:sub(1, last_slash - 2)
       name_part = partial:sub(last_slash)
     else
       dir_part = ""
@@ -356,17 +356,12 @@ function shell:complete_path(partial)
     if name:lower():sub(1, #prefix_lower) == prefix_lower then
       -- build the completion string
       local completion
-      if dir_part == "" then
+      if dir_part == "" and partial:sub(1, 1) == "/" then
+        -- root directory
+        completion = "/" .. name
+      elseif dir_part == "" then
         completion = name
-      elseif partial:sub(1, 1) == "/" then
-        -- absolute path
-        if dir_part == "/" then
-          completion = "/" .. name
-        else
-          completion = dir_part .. "/" .. name
-        end
       else
-        -- relative path
         completion = dir_part .. "/" .. name
       end
 
@@ -381,7 +376,7 @@ function shell:complete_path(partial)
 
   table.sort(matches)
   entries = nil
-  collectgarbage("collect")
+  collectgarbage()
 
   return matches
 end
@@ -532,12 +527,12 @@ function shell:load_external_commands()
 end
 
 -- execute a command
-function shell:execute(cmd, args)
+function shell:execute(cmd, args, raw_input)
   if not cmd then return end
 
   local command = self.commands[cmd]
   if command then
-    local ok, err = pcall(command.run, args, self)
+    local ok, err = pcall(command.run, args, self, raw_input)
     if not ok then
       self:error("Command failed: " .. tostring(err))
     end
@@ -550,6 +545,7 @@ function shell:execute(cmd, args)
   if _G._buffer_mode_blit then
     draw.blitBuffer()
   end
+  collectgarbage()
 end
 
 -- built-in Commands
@@ -782,16 +778,26 @@ local builtin_commands = {
     end
   },
 
-  -- rmdir: delete directory (if empty)
+  -- rmdir: delete directory (if empty), or recursively with -f
   {
     name = "rmdir",
-    help = c.cyan.."rmdir"..c.yellow.." <dir>"..c.white.." - remove empty directory",
+    help = c.cyan.."rmdir"..c.yellow.." [-f] <dir>"..c.white.." - remove directory (-f = force recursive)",
     run = function(args, sh)
-      if not args[1] then
-        return sh:error("Usage: rmdir <dir>")
+      local force = false
+      local dir_arg
+
+      if args[1] == "-f" then
+        force = true
+        dir_arg = args[2]
+      else
+        dir_arg = args[1]
       end
 
-      local path = sh:resolve_path(args[1])
+      if not dir_arg then
+        return sh:error("Usage: rmdir [-f] <dir>")
+      end
+
+      local path = sh:resolve_path(dir_arg)
       local fspath = sh:fs_path(path)
 
       if not fs.exists(fspath) then
@@ -802,17 +808,44 @@ local builtin_commands = {
         return sh:error("'" .. path .. "' is not a directory")
       end
 
-      -- check if empty
-      local entries = fs.list(fspath)
-      if entries and #entries > 0 then
-        return sh:error("Directory not empty")
+      if force then
+        local ans = term.read("Delete '" .. path .. "' and ALL contents? y/[N]: ")
+        ans = ans and ans:lower() or ""
+        if ans ~= "y" then
+          return term.write("Cancelled.\n")
+        end
+
+        -- recursive delete: depth-first
+        local function rm_recursive(p)
+          local items = fs.list(p)
+          if items then
+            for _, item in ipairs(items) do
+              local child = p .. "/" .. item.name
+              if item.isDir then
+                rm_recursive(child)
+              else
+                fs.delete(child)
+              end
+            end
+          end
+          fs.delete(p)
+        end
+
+        rm_recursive(fspath)
+      else
+        -- check if empty
+        local entries = fs.list(fspath)
+        if entries and #entries > 0 then
+          return sh:error("Directory not empty (use -f to force)")
+        end
+
+        fs.delete(fspath)
       end
 
-      fs.delete(fspath)
       if not fs.exists(fspath) then
         return sh:success("Removed '" .. path .. "'")
       else
-        return sh:error("Failed. Dirctory '" .. path .. "' still exists.")
+        return sh:error("Failed. Directory '" .. path .. "' still exists.")
       end
     end
   },
@@ -927,12 +960,12 @@ local builtin_commands = {
     name = "eval",
     aliases = {"lua"},
     help = c.cyan.."eval"..c.yellow.." <lua code>"..c.white.." - execute Lua code",
-    run = function(args, sh)
-      if #args == 0 then
+    run = function(args, sh, raw_input)
+      -- Extract raw code after command name to preserve quotes
+      local code = raw_input and raw_input:match("^%s*%S+%s+(.+)$")
+      if not code or code == "" then
         return sh:error("Usage: eval <lua code>")
       end
-
-      local code = table.concat(args, " ")
 
       local chunk, load_err = load(code)
       if not chunk then
@@ -1076,7 +1109,9 @@ local function main()
 
   -- welcome message
   term.write("\n")
-  term.write(c.green .. "PicoCalc Lua Shell" .. c.white .. " - Type '" .. c.cyan .. "help" .. c.white .. "' for commands\n")
+  term.write(c.green .. "PicoCalc Lua Shell" .. c.white .. " -- " .. c.blue .. _VERSION .. c.white .. "\n")
+  term.write("Type '" .. c.cyan .. "help" .. c.white .. "' for commands\n")
+  collectgarbage()
 
   -- loop until 'exit' sets shell.running to false 
   while shell.running do
@@ -1087,7 +1122,7 @@ local function main()
       readline.add_history(input)
 
       local cmd, args = shell:parse_input(input)
-      shell:execute(cmd, args)
+      shell:execute(cmd, args, input)
     end
   end
 

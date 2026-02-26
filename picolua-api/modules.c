@@ -11,6 +11,7 @@
 #include "socket.h"
 #endif
 #include "psram.h"
+#include "gzip.h"
 #include "../corelua.h"
 #include "../drivers/draw.h"
 #include "../drivers/term.h"
@@ -31,9 +32,10 @@ static int l_credits(lua_State* L) {
 
 	printf("\n");
 	
-	printf("\x1b[93mOriginal RP2040 Lua port\n\x1b[96m  Jeremy Grosser\n");
-	printf("\x1b[93mInitial PicoCalc conversion\n\x1b[96m  Benoit Favre (benob)\n");
-	printf("\x1b[93mExtensions and additional drivers\n\x1b[96m  maple \"mavica\" syrup\n\x1b[37m  <maple@maple.pet>\n");
+	printf("\x1b[93mOriginal RP2040 Lua port\n\x1b[96m  Jeremy Grosser\n\n");
+	printf("\x1b[93mInitial PicoCalc conversion\n\x1b[96m  Benoit Favre (benob)\n\n");
+	printf("\x1b[93mExtensions and additional drivers\n\x1b[96m  maple \"mavica\" syrup\n\x1b[37m  <maple@maple.pet>\n\n");
+	printf("\x1b[93mWi-fi, socket, and TLS drivers\n\x1b[96m  Steve (hacks the) Gibson\n\x1b[37m  <steve@stevegibson.com>\n\n");
 	printf("\x1b[93mSpecial thanks\n\x1b[96m  Willem van der Jagt (wkjagt)\n  Blair Leduc\n  James Churchill (pelrun)\n\n\x1b[m");
 
 	printf("         In memory of\n");
@@ -73,6 +75,7 @@ void modules_register_wrappers(lua_State *L) {
 	luaL_requiref(L, "socket", &luaopen_socket, 1);
 #endif
 	luaL_requiref(L, "psram", &luaopen_psram, 1);
+	luaL_requiref(L, "gzip", &luaopen_gzip, 1);
 
 	lua_register(L, "edit", l_fs_editor);
 	lua_register(L, "credits", l_credits);

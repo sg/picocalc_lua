@@ -19,6 +19,11 @@ target_sources(picolua-api INTERFACE
 	term.c
 	sound.c
 	psram.c
+	gzip.c
+	${CMAKE_SOURCE_DIR}/submodules/uzlib/src/tinflate.c
+	${CMAKE_SOURCE_DIR}/submodules/uzlib/src/tinfgzip.c
+	${CMAKE_SOURCE_DIR}/submodules/uzlib/src/crc32.c
+	${CMAKE_SOURCE_DIR}/submodules/uzlib/src/adler32.c
 )
 
 if(PICO_CYW43_SUPPORTED)
@@ -37,4 +42,5 @@ target_link_libraries(picolua-api INTERFACE
 
 target_include_directories(picolua-api INTERFACE
 	${CMAKE_CURRENT_LIST_DIR}
+	${CMAKE_SOURCE_DIR}/submodules/uzlib/src
 )
