@@ -463,6 +463,8 @@ function UI:refresh()
   self:draw_input_line()
 
   self.needs_redraw = false
+
+  if _G._buffer_mode_blit then draw.blitBuffer() end
 end
 
 -- Mark UI as needing redraw

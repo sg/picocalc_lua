@@ -48,6 +48,8 @@ queue_t key_fifo;
 
 keyboard_callback_t key_available_callback = NULL;
 keyboard_callback_t interrupt_callback = NULL;
+keyboard_callback_t screenshot_callback = NULL;
+keyboard_callback_t idle_callback = NULL;
 
 static int keyboard_modifiers;
 
@@ -109,7 +111,7 @@ static void update_modifiers(unsigned short value) {
 #include "pico/bootrom.h"
 #include "hardware/watchdog.h"
 
-static void keyboard_check_special_keys(unsigned char state, unsigned char code) {
+static bool keyboard_check_special_keys(unsigned char state, unsigned char code) {
 	if (state == KEY_STATE_RELEASED) {
 		if (keyboard_modifiers == (MOD_CONTROL|MOD_ALT)) {
 			if (code == KEY_F1) {
@@ -126,6 +128,11 @@ static void keyboard_check_special_keys(unsigned char state, unsigned char code)
 			}
 		}
 	}
+	if (state == KEY_STATE_PRESSED && code == KEY_F9 && screenshot_callback) {
+		screenshot_callback();
+		return true; // consumed — don't queue this key
+	}
+	return false;
 }
 
 static bool on_keyboard_timer(repeating_timer_t *rt) {
@@ -134,7 +141,7 @@ static bool on_keyboard_timer(repeating_timer_t *rt) {
 	update_modifiers(value);
 	char state = value & 0xff;
 	char code = value >> 8;
-	keyboard_check_special_keys(state, code);
+	if (keyboard_check_special_keys(state, code)) return true; // key consumed
 	if (state == KEY_STATE_PRESSED) {
 		keystates[code] = KEY_STATE_PRESSED;
 	} else if (state == KEY_STATE_RELEASED) {
@@ -152,6 +159,14 @@ void keyboard_set_key_available_callback(keyboard_callback_t callback) {
 
 void keyboard_set_interrupt_callback(keyboard_callback_t callback) {
 	interrupt_callback = callback;
+}
+
+void keyboard_set_screenshot_callback(keyboard_callback_t callback) {
+	screenshot_callback = callback;
+}
+
+void keyboard_set_idle_callback(keyboard_callback_t callback) {
+	idle_callback = callback;
 }
 
 bool keyboard_key_available() {
@@ -176,8 +191,11 @@ input_event_t keyboard_poll(bool peek) {
 
 input_event_t keyboard_wait_ex(bool nomod, bool onlypressed) {
 	input_event_t event;
-	while(true) { 
-		while (!keyboard_key_available())	tight_loop_contents();
+	while(true) {
+		while (!keyboard_key_available()) {
+			if (idle_callback) idle_callback();
+			tight_loop_contents();
+		}
 
 		event = keyboard_poll(false);
 		if (!onlypressed || event.state == KEY_STATE_PRESSED) {

@@ -10,7 +10,12 @@
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
 #include "st7789_lcd.pio.h"
+
+#ifdef PICOCALC_QSPI_PSRAM
+#include "psram_qspi.h"
+#else
 #include "psram_spi.h"
+#endif
 
 #include "lcd.h"
 #include "lcd_lut.h"
@@ -32,8 +37,10 @@ void(*lcd_fill_ptr) (u16,int,int,int,int);
 void(*lcd_point_ptr) (u16,int,int);
 void(*lcd_clear_ptr) (void);
 
+#ifndef PICOCALC_QSPI_PSRAM
 psram_spi_inst_t psram_spi;
 psram_spi_inst_t* async_spi_inst;
+#endif
 
 uint lcd_sm = 0;
 uint lcd_offset;
@@ -161,6 +168,13 @@ static void lcd_direct_clear() {
 static void lcd_psram_draw(u16* pixels, int x, int y, int width, int height) {
 	normalize_coords(&x, &y, &width, &height);
 
+#ifdef PICOCALC_QSPI_PSRAM
+	uint8_t *psram = (uint8_t *)PSRAM_QSPI_BASE;
+	for (uint32_t iy = y * LCD_WIDTH; iy < (y + height) * LCD_WIDTH; iy += LCD_WIDTH) {
+		memcpy(psram + ((iy + x) << 1), pixels, width << 1);
+		pixels += width;
+	}
+#else
 	int remain;
 	for (uint32_t iy = y * LCD_WIDTH; iy < (y + height) * LCD_WIDTH; iy += LCD_WIDTH) {
 		remain = width;
@@ -170,11 +184,21 @@ static void lcd_psram_draw(u16* pixels, int x, int y, int width, int height) {
 			remain -= 10;
 		}
 	}
+#endif
 }
 
 static void lcd_psram_fill(u16 color, int x, int y, int width, int height) {
 	normalize_coords(&x, &y, &width, &height);
 
+#ifdef PICOCALC_QSPI_PSRAM
+	/* Fill tmpbuf with the color, then memcpy per row */
+	int fill_count = (width < LCD_TMPBUF_SIZE) ? width : LCD_TMPBUF_SIZE;
+	for (int i = 0; i < fill_count; i++) lcd_tmpbuf[i] = color;
+	uint8_t *psram = (uint8_t *)PSRAM_QSPI_BASE;
+	for (uint32_t iy = y * LCD_WIDTH; iy < (y + height) * LCD_WIDTH; iy += LCD_WIDTH) {
+		memcpy(psram + ((iy + x) << 1), lcd_tmpbuf, width << 1);
+	}
+#else
 	int remain;
 	for (int i = 0; i < 10; i++) lcd_tmpbuf[i] = color;
 	for (uint32_t iy = y * LCD_WIDTH; iy < (y + height) * LCD_WIDTH; iy += LCD_WIDTH) {
@@ -184,11 +208,17 @@ static void lcd_psram_fill(u16 color, int x, int y, int width, int height) {
 			remain -= 10;
 		}
 	}
+#endif
 }
 
 static void lcd_psram_point(u16 color, int x, int y) {
-	if (x >= 0 && y >= 0 && x < LCD_WIDTH && y < LCD_HEIGHT)
+	if (x >= 0 && y >= 0 && x < LCD_WIDTH && y < LCD_HEIGHT) {
+#ifdef PICOCALC_QSPI_PSRAM
+		*(uint16_t *)(PSRAM_QSPI_BASE + ((x + y * LCD_WIDTH) << 1)) = color;
+#else
 		psram_write16(&psram_spi, (x + y * LCD_WIDTH)<<1, color);
+#endif
+	}
 }
 
 static void lcd_psram_clear() {
@@ -228,12 +258,20 @@ void lcd_buffer_blit_local() {
 	lcd_set_region(0, 0, 319, 319);
 
 	if (framebuffer_mode == LCD_BUFFERMODE_PSRAM) {
+#ifdef PICOCALC_QSPI_PSRAM
+		uint8_t *psram = (uint8_t *)PSRAM_QSPI_BASE;
+		for (int y = 0; y < LCD_HEIGHT * LCD_WIDTH; y += LCD_TMPBUF_SIZE) {
+			memcpy(lcd_tmpbuf, psram + (y << 1), LCD_TMPBUF_SIZE << 1);
+			lcd_write16(lcd_tmpbuf, LCD_TMPBUF_SIZE);
+		}
+#else
 		for (int y = 0; y < LCD_HEIGHT * LCD_WIDTH; y += LCD_TMPBUF_SIZE) {
 			for (int x = 0; x < LCD_TMPBUF_SIZE; x+=10) {
 				psram_read(&psram_spi, (x+y)<<1, (uint8_t*)(lcd_tmpbuf + x), 20);
 			}
 			lcd_write16(lcd_tmpbuf, LCD_TMPBUF_SIZE);
 		}
+#endif
 	} else if (framebuffer_mode == LCD_BUFFERMODE_RAM) {
 		uint16_t color;
 		for (size_t count = 0; count < LCD_WIDTH * LCD_HEIGHT; count++) {
@@ -314,6 +352,16 @@ void lcd_scroll_local(int lines) {
 		// Software scroll for PSRAM mode
 		// In buffer mode, 'lines' is the actual pixel delta to scroll (not cumulative)
 		if (lines > 0 && lines < LCD_HEIGHT) {
+#ifdef PICOCALC_QSPI_PSRAM
+			uint8_t *psram = (uint8_t *)PSRAM_QSPI_BASE;
+			// Single memmove for the entire block
+			memmove(psram,
+			        psram + (lines * LCD_WIDTH << 1),
+			        (LCD_HEIGHT - lines) * LCD_WIDTH << 1);
+			// Clear the bottom rows
+			memset(psram + ((LCD_HEIGHT - lines) * LCD_WIDTH << 1),
+			       0, lines * LCD_WIDTH << 1);
+#else
 			// Shift rows up: copy from [lines..319] to [0..319-lines]
 			// Read and write row by row to avoid needing large buffer
 			for (int y = 0; y < LCD_HEIGHT - lines; y++) {
@@ -333,6 +381,7 @@ void lcd_scroll_local(int lines) {
 					psram_write(&psram_spi, ((x + y * LCD_WIDTH) << 1), (uint8_t*)lcd_tmpbuf, 20);
 				}
 			}
+#endif
 		} else if (lines >= LCD_HEIGHT) {
 			// Scrolling more than screen height, just clear
 			lcd_psram_clear();
@@ -499,7 +548,9 @@ void lcd_reset_pio() {
 		clkdiv = 1.5f;
 	}
 	st7789_lcd_program_init(LCD_PIO, lcd_sm, lcd_offset, LCD_TX, LCD_SCK, clkdiv);
+#ifndef PICOCALC_QSPI_PSRAM
 	psram_spi = psram_spi_init_clkdiv(pio0, 0, clkdiv, true);
+#endif
 }
 
 void lcd_init() {
@@ -521,6 +572,9 @@ void lcd_init() {
 	// Init PIO
 	lcd_offset = pio_add_program(LCD_PIO, &st7789_lcd_program);
 	lcd_reset_pio();
+#ifdef PICOCALC_QSPI_PSRAM
+	psram_qspi_init();
+#endif
 
 	lcd_set_dc_cs(0, 1);
 	gpio_put(LCD_RST, 1);
@@ -605,10 +659,14 @@ int lcd_screenshot(const char* filename) {
 
 	for (int y = LCD_HEIGHT - 1; y >= 0; y--) {
 		if (framebuffer_mode == LCD_BUFFERMODE_PSRAM) {
+#ifdef PICOCALC_QSPI_PSRAM
+			memcpy(row_buf, (uint8_t *)PSRAM_QSPI_BASE + ((y * LCD_WIDTH) << 1), LCD_WIDTH * 2);
+#else
 			// Read row from PSRAM (10 pixels at a time like existing code)
 			for (int x = 0; x < LCD_WIDTH; x += 10) {
 				psram_read(&psram_spi, (x + y * LCD_WIDTH) << 1, (uint8_t*)(row_buf + x), 20);
 			}
+#endif
 		} else if (framebuffer_mode == LCD_BUFFERMODE_RAM) {
 			// Convert 8-bit indexed to 16-bit RGB565
 			for (int x = 0; x < LCD_WIDTH; x++) {
@@ -625,6 +683,22 @@ int lcd_screenshot(const char* filename) {
 
 	f_close(&file);
 	return 0;
+}
+
+// Take screenshot with auto-generated filename (screen001.bmp, screen002.bmp, ...)
+// Writes the chosen path into out_path (up to out_path_size bytes).
+// Returns: 0 success, -1 wrong mode, -2 file error, -3 write error, -4 no free filename
+int lcd_screenshot_auto(char* out_path, size_t out_path_size) {
+	FILINFO finfo;
+	for (int i = 1; i <= 999; i++) {
+		snprintf(out_path, out_path_size, "screen%03d.bmp", i);
+		if (f_stat(out_path, &finfo) != FR_OK) {
+			// File doesn't exist — use this name
+			return lcd_screenshot(out_path);
+		}
+	}
+	out_path[0] = '\0';
+	return -4; // all 999 slots full
 }
 
 // Display BMP file directly to screen at position (x, y)

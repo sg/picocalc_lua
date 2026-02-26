@@ -40,6 +40,7 @@ void lcd_clear_local();
 
 int lcd_load_font(const char* filename);
 int lcd_screenshot(const char* filename);
+int lcd_screenshot_auto(char* out_path, size_t out_path_size);
 int lcd_show_bmp(const char* filename, int x, int y);
 int lcd_get_buffer_mode(void);
 

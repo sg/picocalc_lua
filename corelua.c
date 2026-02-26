@@ -38,9 +38,14 @@ static void l_print (lua_State *L) {
 
 bool should_interrupt = false;
 bool should_run_timer = false;
+volatile bool should_screenshot = false;
 
 static void keyboard_interrupt() {
 	should_interrupt = true;
+}
+
+static void keyboard_screenshot() {
+	should_screenshot = true;
 }
 
 bool sys_timer_callback(repeating_timer_t *rt) {
@@ -48,10 +53,32 @@ bool sys_timer_callback(repeating_timer_t *rt) {
 	return true;
 }
 
+static void handle_screenshot() {
+	char path[20];
+	int result = lcd_screenshot_auto(path, sizeof(path));
+	if (result == 0) {
+		printf("\x1b[93m[screenshot: %s]\x1b[m\n", path);
+	} else if (result == -1) {
+		printf("\x1b[91m[screenshot: buffer mode required]\x1b[m\n");
+	}
+	// silently ignore other errors (-2 file, -3 write, -4 full)
+}
+
+static void keyboard_idle() {
+	if (should_screenshot) {
+		should_screenshot = false;
+		handle_screenshot();
+	}
+}
+
 void lua_interrupt(lua_State *L, lua_Debug *ar) {
   if (should_interrupt) {
 		should_interrupt = false;
 		luaG_runerror(L, "interrupted");
+	}
+	else if (should_screenshot) {
+		should_screenshot = false;
+		handle_screenshot();
 	}
 	else if (should_run_timer) {
 		should_run_timer = false;
@@ -92,6 +119,9 @@ void lua_main() {
 	// instant interrupt (calling luaG_runerror inside keyboard_interrupt) causes hang
 	lua_sethook(L, lua_interrupt, LUA_MASKCOUNT, 50);
 	luaL_openselectedlibs(L, ~LUA_IOLIBK, 0);
+
+	keyboard_set_screenshot_callback(keyboard_screenshot);
+	keyboard_set_idle_callback(keyboard_idle);
 
 	modules_register_wrappers(L);
 	int mounted = fs_mount();

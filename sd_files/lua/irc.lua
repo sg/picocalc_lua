@@ -96,6 +96,7 @@ local help = {
   ping = "/ping <nick> - Ping a user",
   version = "/version <nick> - Request client version",
   help = "/help [command] - Show help for command",
+  buffer = "/buffer [on|off] - Toggle PSRAM buffer mode for screenshots",
 }
 
 -- Parse command line arguments
@@ -594,6 +595,28 @@ commands.version = function(client, ui, args)
   end
 
   client:ctcp(args[1], "VERSION", nil)
+end
+
+commands.buffer = function(client, ui, args)
+  local mode = args[1]
+  if mode == "on" or mode == "1" then
+    if draw.enableBuffer(1) then
+      _G._buffer_mode_blit = true
+      term.clear()
+      ui:invalidate()
+      ui:add_system("PSRAM buffer mode enabled")
+    else
+      ui:add_error("Failed to enable buffer mode")
+    end
+  elseif mode == "off" or mode == "0" then
+    _G._buffer_mode_blit = false
+    draw.enableBuffer(0)
+    ui:add_system("Direct mode enabled")
+    ui:invalidate()
+  else
+    local status = _G._buffer_mode_blit and "ON (PSRAM)" or "OFF (Direct)"
+    ui:add_system("Buffer mode: " .. status .. " - Usage: /buffer [on|off]")
+  end
 end
 
 commands.help = function(client, ui, args)
