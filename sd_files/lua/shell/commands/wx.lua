@@ -8,6 +8,12 @@
 -- ANSI color codes
 local c = require("lua/modules/simple-colors")
 
+local function free_mem()
+  package.loaded["lua/modules/http"] = nil
+  package.loaded["lua/modules/json"] = nil
+  package.loaded["lua/modules/serialize"] = nil
+  collectgarbage()
+end
 
 return {
   name = "wx",
@@ -90,6 +96,7 @@ return {
       if selection == "" then selection = "1" end
       if tonumber(selection) > #picker then
         print(c.red .. "Error: " .. c.white .. "invalid selection.")
+        free_mem()
         return
       end
 
@@ -107,6 +114,7 @@ return {
   
     if not wifi.isConnected() then
       print("Wi-Fi not connected")
+      free_mem()
       return
     end
 
@@ -115,6 +123,7 @@ return {
 
     if not response then
       print("Request failed:" .. err)
+      free_mem()
       return
     end
 
@@ -122,6 +131,7 @@ return {
 
     if response.status >= 400 then
       print("Request failed with status " .. response.status)
+      free_mem()
       return
     end
 
@@ -135,6 +145,7 @@ return {
       print(c.cyan .. k .. c.white .. ": " .. c.green .. v .. c.white)
     end
     print("")
+    free_mem()
 
   end
 }
