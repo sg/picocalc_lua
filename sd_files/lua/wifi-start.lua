@@ -293,6 +293,23 @@ if wifi.isConnected() then
     --print(c.cyan .. "     Gateway:    " .. c.white .. info.gateway)
     --print(c.cyan .. "     Netmask:    " .. c.white .. info.netmask)
   end
+
+  -- sync time via NTP
+  local ntp_server = (wifi_config and wifi_config.ntp_server) or "pool.ntp.org"
+  local ntp_ok, ntp = pcall(require, "lua/modules/ntp")
+  if ntp_ok then
+    local epoch, ntp_err = ntp.sync(ntp_server)
+    if epoch then
+      print(c.cyan .. "    NTP time: " .. c.white .. ntp.iso(epoch))
+      if _G.time_zone then
+        print(c.cyan .. "  Local time: " .. c.white .. ntp.local_iso(epoch))
+      end
+    else
+      print(c.yellow .. "    NTP sync: " .. c.white .. "failed (" .. (ntp_err or "unknown") .. ")")
+    end
+    package.loaded["lua/modules/ntp"] = nil
+    collectgarbage()
+  end
 else
   print(c.red .. "\nConnection timed out waiting for IP" .. c.white)
 end
