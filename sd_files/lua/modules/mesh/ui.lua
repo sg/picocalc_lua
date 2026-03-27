@@ -64,7 +64,7 @@ function UI.new(client)
     current_channel = 0,
 
     -- Timezone offset in hours from UTC (e.g. -5 for EST)
-    tz_offset = 0,
+    tz_offset = _G.time_zone or 0,
   }, UI)
 
   return self
