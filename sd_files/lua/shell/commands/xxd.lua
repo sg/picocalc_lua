@@ -1,7 +1,7 @@
 --[[
 
   xxd.lua - output hex and ascii byte values
-                for a given file
+            for a given file
 
 ]]
 
@@ -79,6 +79,7 @@ return {
       print("         " .. ascii_part)
       --print("---------")
       offset = offset + 16
+      collectgarbage("collect")
     end
 
     f:close()
