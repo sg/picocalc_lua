@@ -33,7 +33,7 @@ local COLOR = {
 
 -- Configuration
 local INDEX_INTERVAL = 50    -- record byte offset every N source lines
-local BUFFER_SCREENS = 5     -- keep this many screens of lines in buffer
+local BUFFER_SCREENS = 3     -- keep this many screens of lines in buffer
 
 -- viewer state
 local state = {
@@ -58,74 +58,80 @@ local state = {
 
 -- word wrap a string to fit within max_width
 -- returns a table of wrapped lines
+-- uses position tracking to avoid intermediate substring garbage
 local function word_wrap(str, max_width)
   if not str or str == "" then
     return {""}
   end
 
-  if #str <= max_width then
+  local len = #str
+  if len <= max_width then
     return {str}
   end
 
   local lines = {}
-  local remaining = str
+  local pos = 1
 
-  while #remaining > 0 do
-    if #remaining <= max_width then
-      table.insert(lines, remaining)
+  while pos <= len do
+    if len - pos + 1 <= max_width then
+      table.insert(lines, str:sub(pos))
       break
     end
 
     local space_pos = nil
-    for i = max_width, 1, -1 do
-      if remaining:sub(i, i) == " " then
+    local search_end = pos + max_width - 1
+    for i = search_end, pos, -1 do
+      if str:byte(i) == 32 then
         space_pos = i
         break
       end
     end
 
-    if space_pos and space_pos > 1 then
-      table.insert(lines, remaining:sub(1, space_pos - 1))
-      remaining = remaining:sub(space_pos + 1)
+    if space_pos and space_pos > pos then
+      table.insert(lines, str:sub(pos, space_pos - 1))
+      pos = space_pos + 1
     else
-      table.insert(lines, remaining:sub(1, max_width))
-      remaining = remaining:sub(max_width + 1)
+      table.insert(lines, str:sub(pos, pos + max_width - 1))
+      pos = pos + max_width
     end
   end
 
   return lines
 end
 
--- count how many display lines a source line produces (using actual word wrap)
+-- count how many display lines a source line produces
+-- uses position tracking and str:byte() to avoid creating any strings
 local function count_wrapped_lines(str, max_width)
   if not str or str == "" then
     return 1
   end
-  if #str <= max_width then
+  local len = #str
+  if len <= max_width then
     return 1
   end
-  -- Use actual word wrap algorithm to count
-  local count = 0
-  local remaining = str
 
-  while #remaining > 0 do
-    if #remaining <= max_width then
+  local count = 0
+  local pos = 1
+
+  while pos <= len do
+    if len - pos + 1 <= max_width then
       count = count + 1
       break
     end
 
     local space_pos = nil
-    for i = max_width, 1, -1 do
-      if remaining:sub(i, i) == " " then
+    local search_end = pos + max_width - 1
+    for i = search_end, pos, -1 do
+      if str:byte(i) == 32 then
         space_pos = i
         break
       end
     end
 
-    if space_pos and space_pos > 1 then
-      remaining = remaining:sub(space_pos + 1)
+    if space_pos and space_pos > pos then
+      pos = space_pos + 1
     else
-      remaining = remaining:sub(max_width + 1)
+      pos = pos + max_width
     end
     count = count + 1
   end
@@ -187,6 +193,7 @@ local function build_index(fspath)
         source_line = source_line,
         display_line = display_line,
       })
+      collectgarbage("collect")
     end
   end
 
@@ -230,6 +237,7 @@ local function load_buffer(target_display_line)
   local capacity = buffer_capacity()
 
   state.buffer = {}
+  collectgarbage("collect")
   state.buffer_start_display = entry.display_line
 
   local lines_loaded = 0
@@ -284,6 +292,7 @@ local function ensure_buffer_covers_viewport()
 
   -- verify we actually cover the viewport now, if not try from earlier
   if not is_in_buffer(view_start) or not is_in_buffer(view_end - 1) then
+    collectgarbage("collect")
     load_buffer(math.max(0, view_start - content_height() * 2))
   end
 end
@@ -335,7 +344,13 @@ local function draw_status_bar()
   end
 
   local left = string.format(" %d-%d/%d (%d%%)", top_line, bot_line, total, pct)
-  local right = "[b/Space]Pg [q]Quit"
+
+  local free_mem = sys.freeMemory()
+  local mem_str = ""
+  if free_mem then
+    mem_str = string.format("Mem: %dK ", math.floor(free_mem / 1024))
+  end
+  local right = mem_str .. "[b/Space]Pg [q]Quit"
 
   local padding = state.width - #left - #right - 1
   if padding < 0 then
@@ -343,12 +358,20 @@ local function draw_status_bar()
     padding = 0
   end
 
-  term.write(COLOR.cyan .. left .. string.rep(" ", padding) .. DIM .. right .. RESET .. CLEAR_LINE)
+  term.write(COLOR.cyan)
+  term.write(left)
+  term.write(string.rep(" ", padding))
+  term.write(DIM)
+  term.write(right)
+  term.write(RESET)
+  term.write(CLEAR_LINE)
 end
 
 -- draw content area
+-- uses sequential term.write() calls to avoid concatenation garbage
 local function draw_content()
   local ch = content_height()
+  local white = COLOR.white
 
   for y = 1, ch do
     term.setCursorPos(1, y)
@@ -356,7 +379,11 @@ local function draw_content()
 
     local line = get_display_line(line_idx)
     if line then
-      term.write(" " .. COLOR.white .. line .. RESET .. CLEAR_LINE)
+      term.write(" ")
+      term.write(white)
+      term.write(line)
+      term.write(RESET)
+      term.write(CLEAR_LINE)
     else
       term.write(CLEAR_LINE)
     end
@@ -367,6 +394,7 @@ end
 local function redraw()
   draw_content()
   draw_status_bar()
+  collectgarbage("collect")
 end
 
 -- handle keyboard input
@@ -417,6 +445,7 @@ end
 
 return {
   name = "page",
+  category = "util",
   aliases = {"less", "more"},
   help = COLOR.cyan .. "page" .. COLOR.yellow .. " <file>" .. COLOR.white .. " - view file with scrolling",
   run = function(args, sh)

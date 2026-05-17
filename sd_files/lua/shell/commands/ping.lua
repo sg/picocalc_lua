@@ -8,6 +8,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "ping",
+  category = "net",
   aliases = {""},
   help = c.cyan.."ping"..c.yellow.." <host> [count]"..c.white.." - ICMP ping host",
   run = function(args, sh)

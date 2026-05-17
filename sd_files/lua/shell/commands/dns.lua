@@ -8,6 +8,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "dns",
+  category = "net",
   aliases = {"host", "nslookup"},
   help = c.cyan.."dns"..c.yellow.." <hostname>"..c.white.." - DNS lookup for given hostname",
   run = function(args, sh)

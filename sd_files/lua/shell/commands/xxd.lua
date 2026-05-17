@@ -1,7 +1,7 @@
 --[[
 
   xxd.lua - output hex and ascii byte values
-                for a given file
+            for a given file
 
 ]]
 
@@ -10,6 +10,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "xxd",
+  category = "util",
   aliases = {"hexdump"},
   help = c.cyan.."xxd"..c.yellow.." <file> [count]"..c.white.." - print hex/ascii values of file",
   run = function(args, sh)
@@ -78,6 +79,7 @@ return {
       print("         " .. ascii_part)
       --print("---------")
       offset = offset + 16
+      collectgarbage("collect")
     end
 
     f:close()

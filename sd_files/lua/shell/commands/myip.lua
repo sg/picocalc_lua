@@ -11,6 +11,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "myip",
+  category = "net",
   help = c.cyan.."myip"..c.yellow.." [file]"..c.white.." - get ext. IP and geo-loc info [to file]",
   run = function(args, sh)
     local json = require("lua/modules/json")

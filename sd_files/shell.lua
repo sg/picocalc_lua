@@ -85,6 +85,11 @@ local file_commands = {
   exec = true,
   page = true,
   less = true,
+  psram = true,
+  psr = true,
+  zinfo = true,
+  zplay = true,
+  tar = true,
 }
 
 
@@ -186,7 +191,6 @@ function shell:is_root(path)
 end
 
 -- parse input into command and arguments
--- to-do: allow escaping quote chars (for 'eval' command)
 function shell:parse_input(input)
   if not input or input == "" then
     return nil, {}
@@ -309,13 +313,13 @@ function shell:complete_path(partial)
 
   -- check for trailing slash (list directory contents)
   if partial:match("/$") then
-    dir_part = partial
+    dir_part = partial:gsub("/+$", "")
     name_part = ""
   else
     -- split into directory and filename parts
     local last_slash = partial:match(".*/()")
     if last_slash then
-      dir_part = partial:sub(1, last_slash - 1)
+      dir_part = partial:sub(1, last_slash - 2)
       name_part = partial:sub(last_slash)
     else
       dir_part = ""
@@ -352,17 +356,12 @@ function shell:complete_path(partial)
     if name:lower():sub(1, #prefix_lower) == prefix_lower then
       -- build the completion string
       local completion
-      if dir_part == "" then
+      if dir_part == "" and partial:sub(1, 1) == "/" then
+        -- root directory
+        completion = "/" .. name
+      elseif dir_part == "" then
         completion = name
-      elseif partial:sub(1, 1) == "/" then
-        -- absolute path
-        if dir_part == "/" then
-          completion = "/" .. name
-        else
-          completion = dir_part .. "/" .. name
-        end
       else
-        -- relative path
         completion = dir_part .. "/" .. name
       end
 
@@ -377,7 +376,7 @@ function shell:complete_path(partial)
 
   table.sort(matches)
   entries = nil
-  collectgarbage("collect")
+  collectgarbage()
 
   return matches
 end
@@ -486,6 +485,7 @@ function shell:register(cmd_def)
 
   self.commands[cmd_def.name] = {
     help = cmd_def.help or "No help available",
+    category = cmd_def.category or "util",
     run = cmd_def.run,
   }
 
@@ -528,12 +528,12 @@ function shell:load_external_commands()
 end
 
 -- execute a command
-function shell:execute(cmd, args)
+function shell:execute(cmd, args, raw_input)
   if not cmd then return end
 
   local command = self.commands[cmd]
   if command then
-    local ok, err = pcall(command.run, args, self)
+    local ok, err = pcall(command.run, args, self, raw_input)
     if not ok then
       self:error("Command failed: " .. tostring(err))
     end
@@ -546,7 +546,16 @@ function shell:execute(cmd, args)
   if _G._buffer_mode_blit then
     draw.blitBuffer()
   end
+  collectgarbage()
 end
+
+-- help category definitions
+local help_categories = {
+  {id = "core",  label = "Core Functionality"},
+  {id = "util",  label = "Utilities"},
+  {id = "net",   label = "Network"},
+  {id = "games", label = "Games"},
+}
 
 -- built-in Commands
 
@@ -555,35 +564,49 @@ local builtin_commands = {
   {
     name = "help",
     aliases = {"?"},
-    help = c.cyan.."help"..c.yellow.." [cmd]"..c.white.."- show help for commands",
+    category = "core",
+    help = c.cyan.."help"..c.yellow.." [category|cmd]"..c.white.." - show help for categories or commands",
     run = function(args, sh)
-      if args[1] then
-        -- help for specific command
-        local cmd = sh.commands[args[1]]
-        if cmd then
-          term.write(cmd.help .. "\n") 
-        else
-          sh:error("Unknown command: " .. args[1])
+      if not args[1] then
+        -- no args: show category list
+        term.write(c.green .. "Help categories:" .. c.white .. "\n\n")
+        for _, cat in ipairs(help_categories) do
+          term.write("  " .. c.cyan .. cat.id .. c.white .. " - " .. cat.label .. "\n")
         end
-      else
-        -- list all commands
-        term.write(c.green .. "Available commands:" .. c.white .. "\n")
+        term.write("\nUsage: " .. c.cyan .. "help " .. c.yellow .. "<category>" .. c.white .. " to list commands\n")
+        term.write("       " .. c.cyan .. "help " .. c.yellow .. "<command>" .. c.white .. "  for command help\n")
+        return
+      end
 
-        -- collect unique commands (skip aliases)
-        local seen = {}
-        local cmds = {}
-        for name, def in pairs(sh.commands) do
-          if not seen[def] then
-            seen[def] = true
-            table.insert(cmds, {name = name, help = def.help})
+      local query = args[1]
+
+      -- check if query matches a category
+      for _, cat in ipairs(help_categories) do
+        if cat.id == query then
+          term.write(c.green .. cat.label .. ":" .. c.white .. "\n")
+          -- collect unique commands in this category
+          local seen = {}
+          local cmds = {}
+          for name, def in pairs(sh.commands) do
+            if not seen[def] and def.category == cat.id then
+              seen[def] = true
+              table.insert(cmds, {name = name, help = def.help})
+            end
           end
+          table.sort(cmds, function(a, b) return a.name < b.name end)
+          for _, cmd in ipairs(cmds) do
+            term.write(" " .. cmd.help .. "\n")
+          end
+          return
         end
+      end
 
-        -- sort alphabetically
-        table.sort(cmds, function(a, b) return a.name < b.name end)
-        for _, cmd in pairs(cmds) do
-          term.write(" " .. cmd.help .. "\n")
-        end
+      -- check if query matches a command
+      local cmd = sh.commands[query]
+      if cmd then
+        term.write(cmd.help .. "\n")
+      else
+        sh:error("Unknown command or category: " .. query)
       end
     end
   },
@@ -592,6 +615,7 @@ local builtin_commands = {
   {
     name = "exit",
     aliases = {"quit", "q"},
+    category = "core",
     help = c.cyan.."exit"..c.white.." - exit the shell",
     run = function(args, sh)
       term.write("Exiting shell...\n")
@@ -603,6 +627,7 @@ local builtin_commands = {
   {
     name = "ls",
     aliases = {"dir", "list"},
+    category = "core",
     help = c.cyan.."ls"..c.yellow.." [dir]"..c.white.." - list directory contents",
     run = function(args, sh)
       local path = sh:resolve_path(args[1])
@@ -627,6 +652,7 @@ local builtin_commands = {
   -- cd: change directory
   {
     name = "cd",
+    category = "core",
     help = c.cyan.."cd"..c.yellow.." [dir|..|-]"..c.white.." - change directory",
     run = function(args, sh)
       local path = args[1] or "/"
@@ -638,6 +664,7 @@ local builtin_commands = {
   {
     name = "pwd",
     aliases = {"cwd"},
+    category = "core",
     help = c.cyan.."pwd"..c.white.." - print current directory",
     run = function(args, sh)
       term.write(sh.cwd .. "\n")
@@ -648,6 +675,7 @@ local builtin_commands = {
   {
     name = "cat",
     aliases = {"type"},
+    category = "core",
     help = c.cyan.."cat"..c.yellow.." <file>"..c.white.." - display file contents",
     run = function(args, sh)
       if not args[1] then
@@ -695,6 +723,7 @@ local builtin_commands = {
   {
     name = "edit",
     aliases = {"vi", "nano"},
+    category = "core",
     help = c.cyan.."edit"..c.yellow.." <file>"..c.white.." - open file in editor",
     run = function(args, sh)
       if not args[1] then
@@ -731,6 +760,7 @@ local builtin_commands = {
   {
     name = "rm",
     aliases = {"del", "delete"},
+    category = "core",
     help = c.cyan.."rm"..c.yellow.." <file>"..c.white.." - delete file",
     run = function(args, sh)
       if not args[1] then
@@ -756,6 +786,7 @@ local builtin_commands = {
   -- mkdir: create directory
   {
     name = "mkdir",
+    category = "core",
     help = c.cyan.."mkdir"..c.yellow.." <dir>"..c.white.." - create directory",
     run = function(args, sh)
       if not args[1] then
@@ -778,16 +809,27 @@ local builtin_commands = {
     end
   },
 
-  -- rmdir: delete directory (if empty)
+  -- rmdir: delete directory (if empty), or recursively with -f
   {
     name = "rmdir",
-    help = c.cyan.."rmdir"..c.yellow.." <dir>"..c.white.." - remove empty directory",
+    category = "core",
+    help = c.cyan.."rmdir"..c.yellow.." [-f] <dir>"..c.white.." - remove directory (-f = force recursive)",
     run = function(args, sh)
-      if not args[1] then
-        return sh:error("Usage: rmdir <dir>")
+      local force = false
+      local dir_arg
+
+      if args[1] == "-f" then
+        force = true
+        dir_arg = args[2]
+      else
+        dir_arg = args[1]
       end
 
-      local path = sh:resolve_path(args[1])
+      if not dir_arg then
+        return sh:error("Usage: rmdir [-f] <dir>")
+      end
+
+      local path = sh:resolve_path(dir_arg)
       local fspath = sh:fs_path(path)
 
       if not fs.exists(fspath) then
@@ -798,17 +840,44 @@ local builtin_commands = {
         return sh:error("'" .. path .. "' is not a directory")
       end
 
-      -- check if empty
-      local entries = fs.list(fspath)
-      if entries and #entries > 0 then
-        return sh:error("Directory not empty")
+      if force then
+        local ans = term.read("Delete '" .. path .. "' and ALL contents? y/[N]: ")
+        ans = ans and ans:lower() or ""
+        if ans ~= "y" then
+          return term.write("Cancelled.\n")
+        end
+
+        -- recursive delete: depth-first
+        local function rm_recursive(p)
+          local items = fs.list(p)
+          if items then
+            for _, item in ipairs(items) do
+              local child = p .. "/" .. item.name
+              if item.isDir then
+                rm_recursive(child)
+              else
+                fs.delete(child)
+              end
+            end
+          end
+          fs.delete(p)
+        end
+
+        rm_recursive(fspath)
+      else
+        -- check if empty
+        local entries = fs.list(fspath)
+        if entries and #entries > 0 then
+          return sh:error("Directory not empty (use -f to force)")
+        end
+
+        fs.delete(fspath)
       end
 
-      fs.delete(fspath)
       if not fs.exists(fspath) then
         return sh:success("Removed '" .. path .. "'")
       else
-        return sh:error("Failed. Dirctory '" .. path .. "' still exists.")
+        return sh:error("Failed. Directory '" .. path .. "' still exists.")
       end
     end
   },
@@ -817,6 +886,7 @@ local builtin_commands = {
   {
     name = "mv",
     aliases = {"rename", "ren"},
+    category = "core",
     help = c.cyan.."mv"..c.yellow.." <src> <dst>"..c.white.." - move or rename file",
     run = function(args, sh)
       if not args[1] or not args[2] then
@@ -849,6 +919,7 @@ local builtin_commands = {
   {
     name = "cp",
     aliases = {"copy"},
+    category = "core",
     help = c.cyan.."cp"..c.yellow.." <source> <dest>"..c.white.." - copy file",
     run = function(args, sh)
       if not args[1] or not args[2] then
@@ -922,13 +993,14 @@ local builtin_commands = {
   {
     name = "eval",
     aliases = {"lua"},
+    category = "core",
     help = c.cyan.."eval"..c.yellow.." <lua code>"..c.white.." - execute Lua code",
-    run = function(args, sh)
-      if #args == 0 then
+    run = function(args, sh, raw_input)
+      -- Extract raw code after command name to preserve quotes
+      local code = raw_input and raw_input:match("^%s*%S+%s+(.+)$")
+      if not code or code == "" then
         return sh:error("Usage: eval <lua code>")
       end
-
-      local code = table.concat(args, " ")
 
       local chunk, load_err = load(code)
       if not chunk then
@@ -950,6 +1022,7 @@ local builtin_commands = {
   {
     name = "run",
     aliases = {"dofile", "exec"},
+    category = "core",
     help = c.cyan.."run"..c.yellow.." <file.lua>"..c.white.." - execute Lua script",
     run = function(args, sh)
       if not args[1] then
@@ -974,6 +1047,7 @@ local builtin_commands = {
   {
     name = "clear",
     aliases = {"cls"},
+    category = "core",
     help = c.cyan.."clear"..c.white.." - clear the screen",
     run = function(args, sh)
       term.clear()
@@ -984,6 +1058,7 @@ local builtin_commands = {
   {
     name = "history",
     aliases = {"hist"},
+    category = "core",
     help = c.cyan.."history"..c.yellow.." [n]"..c.white.." - show command history [last n entries]",
     run = function(args, sh)
       local count = tonumber(args[1]) or #readline.history
@@ -1004,6 +1079,7 @@ local builtin_commands = {
   {
     name = "info",
     aliases = {"sysinfo"},
+    category = "util",
     help = c.cyan.."info"..c.white.." - show system information",
     run = function(args, sh)
       term.write(c.green .. "PicoCalc System Info:" .. c.white .. "\n")
@@ -1034,6 +1110,7 @@ local builtin_commands = {
   {
     name = "batt",
     aliases = {"battery"},
+    category = "util",
     help = c.cyan.."batt"..c.white.." - show battery info",
     run = function(args, sh)
       local batt = sys.battery()
@@ -1045,6 +1122,7 @@ local builtin_commands = {
   {
     name = "reload",
     aliases = {},
+    category = "core",
     help = c.cyan.."reload"..c.white.." - reload external commands",
     run = function(args, sh)
       sh:load_external_commands()
@@ -1072,7 +1150,9 @@ local function main()
 
   -- welcome message
   term.write("\n")
-  term.write(c.green .. "PicoCalc Lua Shell" .. c.white .. " - Type '" .. c.cyan .. "help" .. c.white .. "' for commands\n")
+  term.write(c.green .. "PicoCalc Lua Shell" .. c.white .. " -- " .. c.blue .. _VERSION .. c.white .. "\n")
+  term.write("Type '" .. c.cyan .. "help" .. c.white .. "' for commands\n")
+  collectgarbage()
 
   -- loop until 'exit' sets shell.running to false 
   while shell.running do
@@ -1083,7 +1163,7 @@ local function main()
       readline.add_history(input)
 
       local cmd, args = shell:parse_input(input)
-      shell:execute(cmd, args)
+      shell:execute(cmd, args, input)
     end
   end
 

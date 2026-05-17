@@ -8,6 +8,7 @@ local c = require("lua/modules/simple-colors")
 
 return {
   name = "whois",
+  category = "net",
   aliases = {"who"},
   help = c.cyan.."whois"..c.yellow.." <domain|ip> [file]"..c.white.." - get WHOIS info [to file]",
   run = function(args, sh)
