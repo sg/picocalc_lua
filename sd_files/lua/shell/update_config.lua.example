@@ -1,0 +1,23 @@
+--[[
+
+  Update configuration for PicoCalc Lua
+
+  Copy this file to update_config.lua and edit
+  the values for your repository.
+
+  Supported platforms: "github", "forgejo", "gitea"
+
+  The {board} placeholder in uf2_asset is replaced
+  with sys.board at runtime (e.g. "pico2_w").
+
+]]
+
+return {
+  platform = "github",
+  host = "https://api.github.com",
+  owner = "YOUR_USERNAME",
+  repo = "picocalc_lua",
+  download_base = "https://github.com/YOUR_USERNAME/picocalc_lua/releases/download",
+  sd_asset = "sd_files.tar.gz",
+  uf2_asset = "picolua-{board}.uf2",
+}
