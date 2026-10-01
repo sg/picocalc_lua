@@ -1,0 +1,12 @@
+*.swp
+/build*
+/scratch
+.vscode
+# SD-card local state: credentials, per-device config, history, logs, captures
+/sd_files/lua/wifi.conf
+/sd_files/lua/shell/update_config.lua
+/sd_files/lua/shell/.shell_history
+/sd_files/lua/shell/screenshots/
+/sd_files/lua/shell/commands.tar.gz
+/sd_files/lua/botwarz/debug.log
+/sd_files/screen[0-9][0-9][0-9].bmp
