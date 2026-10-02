@@ -63,7 +63,8 @@ enum {
 
 typedef struct {
 	int state;
-	int x, y, cx, cy, len;
+	int x, y, len;
+	int ccol, crow;
 	u16 fg, bg;
 	char stack[ANSI_STACK_SIZE];
 	int stack_size;
@@ -87,24 +88,80 @@ static ansi_t ansi = {
 	.c_bold=false,
 };
 
-static int ansi_len_to_lcd_x(int len) {
-	return ((ansi.x + len) % font.term_width) * font.glyph_width;
+static int ansi_len_to_col(int len) {
+	return (ansi.x + len) % font.term_width;
 }
 
-static int ansi_len_to_lcd_y(int len) {
-	return (ansi.y + (len + ansi.x) / font.term_width) * font.glyph_height;
+static int ansi_len_to_row(int len) {
+	return ansi.y + (len + ansi.x) / font.term_width;
+}
+
+// Shadow of every visible cell: direct LCD mode cannot read pixels back, so this is the only
+// way to erase the cursor without destroying the glyph underneath it.
+typedef struct __attribute__((packed)) {
+	char c;
+	u16 fg, bg;
+} cell_t;
+
+static cell_t* shadow = NULL;
+static int shadow_cols = 0, shadow_rows = 0;
+static volatile bool blink_pending = false;
+
+static void shadow_blank(int row, int count, int col_from) {
+	for (int r = row; r < row + count; r++) {
+		if (r < 0 || r >= shadow_rows) continue;
+		cell_t* line = shadow + r * shadow_cols;
+		for (int c = col_from; c < shadow_cols; c++) line[c] = (cell_t){ ' ', ansi.fg, ansi.bg };
+	}
+}
+
+// Sized from the font, so it is (re)allocated lazily whenever the font changes
+static bool shadow_ready() {
+	if (font.term_width == 0 || font.term_height == 0) return false;
+	if (shadow && shadow_cols == font.term_width && shadow_rows == font.term_height) return true;
+	free(shadow);
+	shadow_cols = font.term_width;
+	shadow_rows = font.term_height;
+	shadow = malloc(sizeof(cell_t) * shadow_cols * shadow_rows);
+	if (shadow) shadow_blank(0, shadow_rows, 0);
+	return shadow != NULL;
+}
+
+static void shadow_set(int col, int abs_row, u16 fg, u16 bg, char c) {
+	int row = abs_row - ansi.scroll;
+	if (!shadow_ready() || col < 0 || col >= shadow_cols || row < 0 || row >= shadow_rows) return;
+	shadow[row * shadow_cols + col] = (cell_t){ c, fg, bg };
+}
+
+static void shadow_blank_span(int abs_row, int col_from) {
+	if (shadow_ready()) shadow_blank(abs_row - ansi.scroll, 1, col_from < 0 ? 0 : col_from);
+}
+
+// Viewport moved down by delta rows, so the shadow must follow what is on screen
+static void shadow_shift(int delta) {
+	if (!shadow_ready()) return;
+	if (delta >= shadow_rows || -delta >= shadow_rows) { shadow_blank(0, shadow_rows, 0); return; }
+	size_t line = sizeof(cell_t) * shadow_cols;
+	if (delta > 0) {
+		memmove(shadow, shadow + delta * shadow_cols, (shadow_rows - delta) * line);
+		shadow_blank(shadow_rows - delta, delta, 0);
+	} else if (delta < 0) {
+		memmove(shadow + (-delta) * shadow_cols, shadow, (shadow_rows + delta) * line);
+		shadow_blank(0, -delta, 0);
+	}
 }
 
 void term_scroll(int lines) {
 	if (lines != ansi.scroll) {
+		int scroll_delta = lines - ansi.scroll;
 		int buffer_mode = lcd_get_buffer_mode();
 		if (buffer_mode != LCD_BUFFERMODE_DIRECT) {
 			// Buffer mode: software scroll actually shifts pixels,
 			// so we need to adjust ansi.y to stay in valid range
-			int scroll_delta = lines - ansi.scroll;
 			lcd_scroll(scroll_delta * font.glyph_height);
 			// Adjust Y position since content has been shifted
 			ansi.y -= scroll_delta;
+			ansi.crow -= scroll_delta;
 			// Reset scroll tracking since content is actually shifted
 			ansi.scroll = 0;
 		} else {
@@ -113,6 +170,7 @@ void term_scroll(int lines) {
 			term_erase_line(lines + font.term_height);
 			lcd_scroll(lines * font.glyph_height);
 		}
+		shadow_shift(scroll_delta);
 	}
 }
 
@@ -121,6 +179,9 @@ void term_clear() {
 	lcd_clear();
 	lcd_scroll(0);
 	ansi.scroll = 0;
+	if (shadow_ready()) shadow_blank(0, shadow_rows, 0);
+	// nothing is left on screen to erase, so the next blink simply draws at the new position
+	ansi.cursor_visible = false;
 }
 
 static void term_draw_char(int x, int y, u16 fg, u16 bg, char c) {
@@ -137,7 +198,18 @@ static void term_erase_char(int x, int y, u16 bg) {
 		lcd_fill(bg, x, y - lcd_current_height, font.glyph_width, font.glyph_height);
 }
 
+static void term_put_cell(int col, int abs_row, u16 fg, u16 bg, char c) {
+	term_draw_char(col * font.glyph_width, abs_row * font.glyph_height, fg, bg, c);
+	shadow_set(col, abs_row, fg, bg, c);
+}
+
+static void term_blank_cell(int col, int abs_row, u16 bg) {
+	term_erase_char(col * font.glyph_width, abs_row * font.glyph_height, bg);
+	shadow_set(col, abs_row, ansi.fg, bg, ' ');
+}
+
 void term_erase_line(int y) {
+	shadow_blank_span(y, 0);
 	y = (y * font.glyph_height) % lcd_current_height;
 	lcd_fill(ansi.bg, 0, y, LCD_WIDTH, font.glyph_height);
 	if (y > lcd_current_height - font.glyph_height)
@@ -145,6 +217,7 @@ void term_erase_line(int y) {
 }
 
 void term_erase_current_line() {
+	shadow_blank_span(ansi.y, 0);
 	int y = (ansi.y * font.glyph_height) % lcd_current_height;
 	lcd_fill(ansi.bg, 0, y, LCD_WIDTH, font.glyph_height);
 	if (y > lcd_current_height - font.glyph_height)
@@ -152,6 +225,7 @@ void term_erase_current_line() {
 }
 
 void term_erase_from_cursor() {
+	shadow_blank_span(ansi.y, ansi.x);
 	int x = ansi.x * font.glyph_width;
 	int y = (ansi.y * font.glyph_height) % lcd_current_height;
 	lcd_fill(ansi.bg, x, y, LCD_WIDTH - x, font.glyph_height);
@@ -159,31 +233,54 @@ void term_erase_from_cursor() {
 		lcd_fill(ansi.bg, x, y - lcd_current_height, LCD_WIDTH - x, font.glyph_height);
 }
 
+// Redraws the cursor cell from the shadow (inverted while on) so the glyph survives every blink;
+// without a shadow it falls back to the old one-pixel bar.
+static void cursor_paint(bool on) {
+	int x = ansi.ccol * font.glyph_width, y = ansi.crow * font.glyph_height;
+	int row = ansi.crow - ansi.scroll;
+	if (!shadow_ready()) {
+		lcd_fill(on ? ansi.fg : ansi.bg, x, y, 1, font.glyph_height - 1);
+		return;
+	}
+	if (ansi.ccol < 0 || ansi.ccol >= shadow_cols || row < 0 || row >= shadow_rows) return;
+	cell_t cell = shadow[row * shadow_cols + ansi.ccol];
+	if (on) term_draw_char(x, y, cell.bg, cell.fg, cell.c);
+	else term_draw_char(x, y, cell.fg, cell.bg, cell.c);
+}
+
 static void draw_cursor() {
 	if (ansi.cursor_enabled && !ansi.cursor_visible) {
-		ansi.cx = ansi_len_to_lcd_x(ansi.len);
-		ansi.cy = ansi_len_to_lcd_y(ansi.len);
-		// this used to be an underline but without a buffer of what it draws over, it causes too many artifacts
-		lcd_fill(ansi.fg, ansi.cx, ansi.cy, 1, font.glyph_height - 1);
+		ansi.ccol = ansi_len_to_col(ansi.len);
+		ansi.crow = ansi_len_to_row(ansi.len);
+		cursor_paint(true);
 		ansi.cursor_visible = true;
 	}
 }
 
 static void erase_cursor() {
 	if (ansi.cursor_enabled && ansi.cursor_visible) {
-		lcd_fill(ansi.bg, ansi.cx, ansi.cy, 1, font.glyph_height - 1);
+		cursor_paint(false);
 		ansi.cursor_visible = false;
 	}
 }
 
+// Fires in the core 0 timer IRQ, so it only flags the blink; the Lua core draws it from
+// term_cursor_service() to keep cursor traffic ordered with everything else the terminal draws.
 static bool on_cursor_timer(repeating_timer_t *rt) {
+	blink_pending = true;
+	return true;
+}
+
+void term_cursor_service() {
+	if (!blink_pending) return;
+	blink_pending = false;
+	if (!ansi.cursor_enabled) return;
 	if (!ansi.cursor_manual && ansi.cursor_visible) {
 		erase_cursor();
 	} else {
 		ansi.cursor_manual = false;
 		draw_cursor();
 	}
-	return true;
 }
 
 bool term_get_blinking_cursor() {
@@ -200,6 +297,7 @@ void term_set_blinking_cursor(bool enabled) {
 		erase_cursor();
 		ansi.cursor_enabled = false;
 		cancel_repeating_timer(&cursor_timer);
+		blink_pending = false;
 	}
 }
 
@@ -254,7 +352,7 @@ void term_blit(const char* text, const char* fg, const char* bg) {
 		if (*lbg >= '0' && *lbg <= '9') pbg = palette[*lbg - '0'];
 		else if (*lbg >= 'a' && *lbg <= 'f') pbg = palette[*lbg - 'a' + 10];
 		else if (*lbg >= 'A' && *lbg <= 'F') pbg = palette[*lbg - 'A' + 10];
-		term_draw_char(ansi.x * font.glyph_width, ansi.y * font.glyph_height, pfg, pbg, *text);
+		term_put_cell(ansi.x, ansi.y, pfg, pbg, *text);
 		ansi.x += 1;
 		if (ansi.x > font.term_width) return;
 		text ++;
@@ -294,7 +392,7 @@ static void out_char(char c) {
 		if (c == '\t') c = ' ';
 		if (c >= 32 && c < 127) {
 			should_scroll();
-			term_draw_char(ansi.x * font.glyph_width, ansi.y * font.glyph_height, fg, bg, c);
+			term_put_cell(ansi.x, ansi.y, fg, bg, c);
 			ansi.x += 1;
 		}
 	}
@@ -397,6 +495,7 @@ void stdio_picocalc_out_chars(const char *buf, int length) {
 }
 
 static int stdio_picocalc_in_chars(char *buf, int length) {
+	term_cursor_service();
 	input_event_t event = keyboard_poll(false);
 	if (event.state == KEY_STATE_PRESSED && event.code > 0) {
 		if (event.modifiers & MOD_CONTROL && event.code >= 'a' && event.code < 'z') {
@@ -420,20 +519,16 @@ stdio_driver_t stdio_picocalc = {
 };
 
 static void term_erase_input(int size) {
-	for (int i = 0; i < size + 1; i++) {
-		int x = ansi_len_to_lcd_x(i), y = ansi_len_to_lcd_y(i);
-		term_erase_char(x, y, ansi.bg);
-	}
+	for (int i = 0; i < size + 1; i++) term_blank_cell(ansi_len_to_col(i), ansi_len_to_row(i), ansi.bg);
 }
 
 // TODO: this should be less specialized
 static void term_draw_input(char* buffer, int size, int cursor) {
 	if (ansi.y + (size + ansi.x) / font.term_width >= font.term_height) term_scroll(ansi.y + (size + ansi.x) / font.term_width - (font.term_height-1));
 	for (int i = 0; i < size + 1; i++) {
-		int x = ansi_len_to_lcd_x(i), y = ansi_len_to_lcd_y(i);
-		if (i < size) term_draw_char(x, y, ansi.fg, ansi.bg, buffer[i]);
-		else term_erase_char(x, y, ansi.bg);
-		//if (ansi.cursor_enabled && i == cursor) lcd_fifo_fill(ansi.fg, x, y + font.glyph_height - 3, font.glyph_width, 2);
+		int col = ansi_len_to_col(i), row = ansi_len_to_row(i);
+		if (i < size) term_put_cell(col, row, ansi.fg, ansi.bg, buffer[i]);
+		else term_blank_cell(col, row, ansi.bg);
 	}
 }
 

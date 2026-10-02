@@ -65,6 +65,7 @@ static void handle_screenshot() {
 }
 
 static void keyboard_idle() {
+	term_cursor_service();
 	if (should_screenshot) {
 		should_screenshot = false;
 		handle_screenshot();
@@ -72,6 +73,7 @@ static void keyboard_idle() {
 }
 
 void lua_interrupt(lua_State *L, lua_Debug *ar) {
+	term_cursor_service();
   if (should_interrupt) {
 		should_interrupt = false;
 		luaG_runerror(L, "interrupted");
