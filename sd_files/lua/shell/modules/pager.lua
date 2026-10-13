@@ -233,6 +233,7 @@ local function run_store(fn, ...)
   local window = (height - 1) * WINDOW_SCREENS
 
   local lines, first = {}, 0
+  local source = {}             -- unwrapped lines, kept until the viewer is needed
   local pending = ""            -- text since the last newline the command wrote
   local done, ok, result = false, true, nil
   local real_print, real_write
@@ -296,6 +297,7 @@ local function run_store(fn, ...)
       if pending == "" then return false end
       value, pending = pending, ""
     end
+    if source then source[#source + 1] = value end
     wrap(value, wrap_width, lines)
     return true
   end
@@ -317,6 +319,8 @@ local function run_store(fn, ...)
   function store:at_end() return done end
   function store:line(i) return lines[i - first + 1] end
   function store:result() return ok, result end
+  function store:source_lines() return source end
+  function store:drop_source() source = nil end
 
   function store:ensure(from, to)
     while first + #lines <= to and pull() do
@@ -426,13 +430,15 @@ function pager.run(fn, ...)
   local content = height - 1
   local store = run_store(fn, ...)
 
-  -- one line more than a screen tells short output from long
+  -- one line more than a screen tells short output from long; short
+  -- output is written exactly as the command produced it
   store:ensure(0, content)
   if store:at_end() and store:total() <= content then
-    for i = 0, store:total() - 1 do
-      term.write(store:line(i) .. "\n")
+    for _, line in ipairs(store:source_lines()) do
+      term.write(line .. "\n")
     end
   else
+    store:drop_source()
     pager.view(store)
   end
   store:close()
