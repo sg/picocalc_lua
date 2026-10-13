@@ -439,8 +439,10 @@ return {
       -- destination directory: explicit arg or cwd
       local dest
       if args[3] then
-        dest = sh:fs_path(sh:resolve_path(args[3]))
-        if not fs.exists(dest) then
+        local abs = sh:resolve_path(args[3])
+        dest = sh:fs_path(abs)
+        -- the root cannot be stat'ed or created, only used
+        if not sh:is_root(abs) and not fs.exists(dest) then
           fs.makeDir(dest)
         end
       else
