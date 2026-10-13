@@ -409,7 +409,7 @@ local function read_response(sock, timeout, redirect_count, stream_opts)
                 -- open output file if specified
                 local out_file = nil
                 if stream_opts.output_file then
-                  out_file = fs.open(stream_opts.output_file, "wb")
+                  out_file = fs.open(stream_opts.output_file, "w")
                   if not out_file then
                     for i = 1, #chunks do chunks[i] = nil end
                     streamed_info = nil

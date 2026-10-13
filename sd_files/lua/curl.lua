@@ -295,9 +295,10 @@ local function output_response(response, options)
 
   if options.output then
     -- write to file
-    local file, ferr = io.open(options.output, "wb")
-    if not file then
-      print("Error: Cannot write to " .. options.output .. ": " .. (ferr or "unknown"))
+    -- fs.open raises on failure and has no binary mode
+    local ok, file = pcall(fs.open, options.output, "w")
+    if not ok then
+      print("Error: Cannot write to " .. options.output .. ": " .. tostring(file))
       return false
     end
     file:write(body)
