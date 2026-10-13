@@ -140,6 +140,22 @@ tar x /sd_files.tar.gz
 `lua/wifi.conf` and the per-device configs are excluded by
 `make-sd-archive.sh`, exactly as for a locally built archive.
 
+## Development builds
+
+Between releases the device can pull a local build directly. `build.sh`
+and `make-sd-archive.sh` name their output after `git describe`, so serve
+the deploy directory and give the device that string:
+
+```sh
+./build.sh pico2w && ./make-sd-archive.sh
+python3 -m http.server 8080 -d /home/steve/dev/picocalc/uf2-deploy
+```
+
+On the PicoCalc, `fetch-dev v0.6.0-3-g1729db7` downloads the firmware
+for its own board into the uf2-loader directory and the archive into the
+SD root, then prints the install steps. The server defaults to
+`http://192.168.27.164:8080`; a second argument overrides it.
+
 ## Faster runs
 
 Two optional changes shorten a run. Building a small image with

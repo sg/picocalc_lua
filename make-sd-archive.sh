@@ -2,10 +2,11 @@
 # Build an SD-card update archive that the device's tar command can
 # extract from / with "tar x /sd_files.tar.gz".
 #
-#   ./make-sd-archive.sh [output]     default: $DEPLOY/sd_files.tar.gz
+#   ./make-sd-archive.sh [output]     default: $DEPLOY/sd_files-<version>.tar.gz
 #
 # A version.txt holding $VERSION (default: git describe) is added so
-# the update command on the device knows what it is running.
+# the update command on the device knows what it is running, and the
+# same string names the archive so fetch-dev on the device finds it.
 #
 # Members come from git (tracked plus untracked-but-not-ignored files
 # under sd_files/), so credentials, history, screenshots and logs that
@@ -16,18 +17,18 @@
 #   mkdir /backup
 #   cd /
 #   tar c /backup/sd-before.tar main.lua shell.lua fonts lua
-#   fetch http://<host>:<port>/sd_files.tar.gz /sd_files.tar.gz
-#   tar t /sd_files.tar.gz
-#   tar x /sd_files.tar.gz        (answer 'a' at the overwrite prompt)
+#   fetch-dev <version>           (serve $DEPLOY with: python3 -m http.server 8080 -d $DEPLOY)
+#   tar t /sd_files-<version>.tar.gz
+#   tar x /sd_files-<version>.tar.gz        (answer 'a' at the overwrite prompt)
 set -e
 
 DEPLOY=${DEPLOY:-/home/steve/dev/picocalc/uf2-deploy}
-OUT=${1:-$DEPLOY/sd_files.tar.gz}
 SRC=$(cd "$(dirname "$0")/sd_files" && pwd)
+VERSION=${VERSION:-$(git -C "$SRC" describe --tags --always --dirty=+ 2>/dev/null || echo unknown)}
+OUT=${1:-$DEPLOY/sd_files-$VERSION.tar.gz}
 
 LOCAL_CONFIGS="lua/picolua.conf lua/wx.conf lua/shell/update_config.lua"
 SECRETS="lua/wifi.conf"
-VERSION=${VERSION:-$(git -C "$SRC" describe --tags --always --dirty=+ 2>/dev/null || echo unknown)}
 
 list=$(mktemp)
 stage=$(mktemp -d)
