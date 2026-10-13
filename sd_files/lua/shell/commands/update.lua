@@ -25,15 +25,15 @@ local c = require("lua/modules/simple-colors")
 ------------------------------------------------------------
 local DEFAULT_CONFIG = {
   -- "github", "forgejo", or "gitea"
-  platform = "github",
+  platform = "forgejo",
   -- API host (include https://)
-  host = "https://api.github.com",
+  host = "http://192.168.27.9:3000",
   -- repository owner and name
-  owner = "example",
+  owner = "steve",
   repo = "picocalc_lua",
   -- download base URL for release assets
   -- (may differ from API host, e.g. github.com vs api.github.com)
-  download_base = "https://github.com/example/picocalc_lua/releases/download",
+  download_base = "http://192.168.27.9:3000/steve/picocalc_lua/releases/download",
   -- filename patterns for release assets
   sd_asset = "sd_files.tar.gz",
   -- uf2 asset pattern: {board} is replaced with sys.board
@@ -228,7 +228,7 @@ local function create_backup(current_version, sh)
   -- collect files/dirs to back up
   local sources = {}
   local to_backup = {
-    "shell.lua", "main.lua", "lua/", "cc/", "version.txt",
+    "shell.lua", "main.lua", "lua/", "version.txt",
   }
   for _, name in ipairs(to_backup) do
     if fs.exists(name) then
