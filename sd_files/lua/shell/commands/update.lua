@@ -132,18 +132,15 @@ local function asset_name(pattern, tag)
   return (pattern:gsub("{board}", board):gsub("{tag}", tag))
 end
 
--- simple semver comparison: returns true if a > b
--- handles vX.Y.Z format (strips leading "v")
+-- true if release a is newer than b; a version without an X.Y.Z
+-- number, which is what an archive built from an untagged commit
+-- carries, counts as older than any release
 local function version_newer(a, b)
   if not a or not b then return a ~= nil end
-  a = a:gsub("^v", "")
-  b = b:gsub("^v", "")
-  local a1, a2, a3 = a:match("^(%d+)%.(%d+)%.(%d+)")
-  local b1, b2, b3 = b:match("^(%d+)%.(%d+)%.(%d+)")
-  if not a1 or not b1 then
-    -- fallback: simple string comparison
-    return a > b
-  end
+  local a1, a2, a3 = a:match("^v?(%d+)%.(%d+)%.(%d+)")
+  local b1, b2, b3 = b:match("^v?(%d+)%.(%d+)%.(%d+)")
+  if not a1 then return a > b end
+  if not b1 then return true end
   a1, a2, a3 = tonumber(a1), tonumber(a2), tonumber(a3)
   b1, b2, b3 = tonumber(b1), tonumber(b2), tonumber(b3)
   if a1 ~= b1 then return a1 > b1 end

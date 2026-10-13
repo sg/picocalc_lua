@@ -84,7 +84,7 @@ The updater fetches the latest tag from the forge's API:
 - **GitHub:** `GET https://api.github.com/repos/{owner}/{repo}/tags?per_page=1`
 - **Forgejo/Gitea:** `GET https://{host}/api/v1/repos/{owner}/{repo}/tags?limit=1`
 
-The response is a small JSON array (under 1KB). Only the first tag's `name` field is used. This is compared against the version string in `/version.txt` using semver comparison (`vX.Y.Z` format).
+The response is a small JSON array (under 1KB). Only the first tag's `name` field is used. This is compared against the version string in `/version.txt` using semver comparison (`vX.Y.Z` format). A `/version.txt` without an `X.Y.Z` number, which is what an archive built from an untagged commit carries, counts as older than any release.
 
 ### Backup
 
