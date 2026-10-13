@@ -396,7 +396,8 @@ int luaopen_fs(lua_State *L) {
 		{"writeLine", l_fs_writeLine},
 		{"flush", l_fs_flush},
 		{"close", l_fs_close},
-		{"__gc", l_fs_close}, // i think this is correct? i can't find much on __gc
+		{"__gc", l_fs_close},
+		{"__close", l_fs_close}, // lets Lua code use "local f <close> = fs.open(...)"
 		{NULL, NULL}
 	};
 	
