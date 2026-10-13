@@ -1,8 +1,9 @@
 #!/bin/sh
 set -e
 
-DEPLOY=/home/steve/dev/picocalc/uf2-deploy
-PICO_SDK_PATH=/home/steve/dev/picocalc/pico-sdk
+# both can be overridden from the environment, which is how CI calls this
+DEPLOY=${DEPLOY:-/home/steve/dev/picocalc/uf2-deploy}
+PICO_SDK_PATH=${PICO_SDK_PATH:-/home/steve/dev/picocalc/pico-sdk}
 
 usage() {
     echo "Usage: $0 <board|all> [build_num]"
@@ -58,7 +59,7 @@ build_board() {
     fi
 
     echo "Running make for $board..."
-    if ! make -C "$build_dir"; then
+    if ! make -j"$(nproc)" -C "$build_dir"; then
         echo "*** build failed for $board ***"
         return 1
     fi
