@@ -31,6 +31,7 @@
 
 local readline = {
   history = {},
+  history_base = 0,      -- entries dropped so far, so history numbers stay stable
   max_history = 100,
   max_completions = 50,  -- limit completions for memory
   max_display = 20,      -- max completions to show at once
@@ -451,12 +452,14 @@ function readline.add_history(line)
   -- trim history if too long
   while #readline.history > readline.max_history do
     table.remove(readline.history, 1)
+    readline.history_base = readline.history_base + 1
   end
 end
 
 -- clear history
 function readline.clear_history()
   readline.history = {}
+  readline.history_base = 0
 end
 
 -- load history from file
@@ -484,6 +487,7 @@ function readline.load_history(filename)
   while #readline.history > readline.max_history do
     table.remove(readline.history, 1)
   end
+  readline.history_base = 0
 
   return true
 end

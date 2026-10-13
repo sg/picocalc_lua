@@ -377,6 +377,39 @@ function shell:parse_input(input)
   return cmd, args
 end
 
+-- bash-style history references: !n runs the entry numbered n by the
+-- history command, !! the last command, !-n the nth most recent and
+-- !text the most recent command starting with text; other input is
+-- returned unchanged, a reference that matches nothing returns nil, err
+function shell:expand_history(input)
+  local ref = input:match("^!%s*(.-)%s*$")
+  if not ref or ref == "" then
+    return input
+  end
+
+  local h = readline.history
+  local entry
+  if ref == "!" then
+    entry = h[#h]
+  elseif ref:match("^%-%d+$") then
+    entry = h[#h + 1 + tonumber(ref)]
+  elseif ref:match("^%d+$") then
+    entry = h[tonumber(ref) - readline.history_base]
+  else
+    for i = #h, 1, -1 do
+      if h[i]:sub(1, #ref) == ref then
+        entry = h[i]
+        break
+      end
+    end
+  end
+
+  if not entry then
+    return nil, "No history entry for " .. input
+  end
+  return entry
+end
+
 -- file size in at most six characters: bytes, then decimal M or G
 function shell:short_size(size)
   if size < 1000000 then
@@ -1388,6 +1421,7 @@ local builtin_commands = {
     category = "core",
     usage = "[n]",
     desc = "show command history [last n entries]",
+    long = "Run an entry again with !n, the last command with !!, the nth most recent with !-n, or the most recent starting with text as !text",
     args = "number?",
     pager = true,
     run = function(args, sh)
@@ -1400,7 +1434,7 @@ local builtin_commands = {
       end
 
       for i = start, #readline.history do
-        term.write(string.format("%4d  %s", i, readline.history[i]) .. "\n")
+        term.write(string.format("%4d  %s", readline.history_base + i, readline.history[i]) .. "\n")
       end
     end
   },
@@ -1490,11 +1524,21 @@ local function main()
     local input = shell:prompt()
 
     if input and input ~= "" then
-      -- add to history
-      readline.add_history(input)
+      -- a history reference is replaced by the command it names, so
+      -- history records what actually ran
+      local expanded, err = shell:expand_history(input)
+      if not expanded then
+        shell:error(err)
+        shell.last_status = false
+      else
+        if expanded ~= input then
+          term.write(expanded .. "\n")
+        end
+        readline.add_history(expanded)
 
-      local cmd, args = shell:parse_input(input)
-      shell:execute(cmd, args, input)
+        local cmd, args = shell:parse_input(expanded)
+        shell:execute(cmd, args, expanded)
+      end
     end
   end
 
