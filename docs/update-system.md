@@ -5,8 +5,7 @@ The `update` shell command checks a remote git forge for new releases and can do
 ## Quick Start
 
 ```
-update config          -- show config template
-edit /lua/shell/update_config.lua   -- create config
+update config          -- show the active config
 update check           -- check if an update is available
 update                 -- download and install
 ```
@@ -14,13 +13,13 @@ update                 -- download and install
 ## Requirements
 
 - Wi-Fi connection (`wifi on`)
-- A config file at `/lua/shell/update_config.lua`
+- Optionally a config file at `/lua/shell/update_config.lua`; without one the built-in defaults are used
 - A `/version.txt` file on the SD card (shipped in the SD archive and rewritten after each update)
 - Releases published on the configured git forge with tagged versions
 
 ## Configuration
 
-Copy the example config and edit it:
+The built-in defaults point at the Forgejo repository this tree is published from. To change any of them, copy the example config and edit it. Every key is optional and a key left out keeps its default:
 
 ```
 cp /lua/shell/update_config.lua.example /lua/shell/update_config.lua
@@ -74,7 +73,7 @@ Same as `update` but stops after comparing versions. Does not download or instal
 
 ### `update config`
 
-Displays the current configuration. If no config file exists, prints a template showing the expected format.
+Displays the active configuration and whether it came from the file or the built-in defaults.
 
 ## How It Works
 
@@ -218,7 +217,7 @@ The release workflow then stages a draft release with the assets; publish it fro
 
 ## Troubleshooting
 
-**"No update config found"** -- Create `/lua/shell/update_config.lua`. Run `update config` to see the template.
+**"Cannot load /lua/shell/update_config.lua"** -- The file has a syntax error or does not return a table. Fix it, or delete it to fall back to the built-in defaults.
 
 **"Wi-Fi not connected"** -- Run `wifi on` first to connect.
 

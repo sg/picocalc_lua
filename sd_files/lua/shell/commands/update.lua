@@ -14,7 +14,9 @@
     update check        - check only, don't install
     update config       - show current update config
 
-  Configuration is stored in /lua/shell/update_config.lua
+  Configuration is read from /lua/shell/update_config.lua when
+  it exists; any key it leaves out, or the whole file, falls
+  back to DEFAULT_CONFIG below.
 
 ]]
 
@@ -44,16 +46,26 @@ local DEFAULT_CONFIG = {
 -- HELPERS
 ------------------------------------------------------------
 
+-- returns the config and where it came from, or nil and an error;
+-- a file that exists but will not load is reported rather than
+-- silently replaced by the defaults
 local function load_config()
-  local ok, cfg = pcall(dofile, "lua/shell/update_config.lua")
-  if ok and type(cfg) == "table" then
-    -- merge with defaults so missing keys are filled in
-    for k, v in pairs(DEFAULT_CONFIG) do
-      if cfg[k] == nil then cfg[k] = v end
+  local path = "lua/shell/update_config.lua"
+  local cfg, source = {}, "built-in defaults"
+  if fs.exists(path) then
+    local ok, result = pcall(dofile, path)
+    if not ok then
+      return nil, "Cannot load /" .. path .. ": " .. tostring(result)
     end
-    return cfg
+    if type(result) ~= "table" then
+      return nil, "/" .. path .. " must return a table"
+    end
+    cfg, source = result, "/" .. path
   end
-  return nil
+  for k, v in pairs(DEFAULT_CONFIG) do
+    if cfg[k] == nil then cfg[k] = v end
+  end
+  return cfg, source
 end
 
 -- read current version from /version.txt
@@ -294,13 +306,8 @@ local function do_update(args, sh)
     return sh:error("Wi-Fi not connected. Connect with: wifi on")
   end
 
-  -- load config
-  local cfg = load_config()
-  if not cfg then
-    return sh:error("No update config found.\n"
-      .. "Create /lua/shell/update_config.lua first.\n"
-      .. "Run 'update config' to see the expected format.")
-  end
+  local cfg, source = load_config()
+  if not cfg then return sh:error(source) end
 
   -- read current version
   local current = read_version()
@@ -449,28 +456,19 @@ end
 -- SHOW CONFIG
 ------------------------------------------------------------
 local function show_config(sh)
-  local cfg = load_config()
-  if cfg then
-    term.write(c.green .. "Current update config:" .. c.white .. "\n")
-    term.write("  Platform: " .. cfg.platform .. "\n")
-    term.write("      Host: " .. cfg.host .. "\n")
-    term.write("     Owner: " .. cfg.owner .. "\n")
-    term.write("      Repo: " .. cfg.repo .. "\n")
-    term.write("  Download: " .. cfg.download_base .. "\n")
-    term.write("  SD asset: " .. cfg.sd_asset .. "\n")
-    term.write(" UF2 asset: " .. cfg.uf2_asset .. "\n")
-  else
-    term.write(c.yellow .. "No config found." .. c.white .. "\n")
-    term.write("Create /lua/shell/update_config.lua:\n\n")
-    term.write(c.cyan .. "return {\n")
-    term.write('  platform = "github",\n')
-    term.write('  host = "https://api.github.com",\n')
-    term.write('  owner = "YOUR_USERNAME",\n')
-    term.write('  repo = "picocalc_lua",\n')
-    term.write('  download_base = "https://github.com/YOUR_USERNAME/picocalc_lua/releases/download",\n')
-    term.write('  sd_asset = "sd_files-{tag}.tar.gz",\n')
-    term.write('  uf2_asset = "picolua-{board}-{tag}.uf2",\n')
-    term.write("}" .. c.white .. "\n")
+  local cfg, source = load_config()
+  if not cfg then return sh:error(source) end
+  term.write(c.green .. "Update config" .. c.white .. " from " .. source .. ":\n")
+  term.write("  Platform: " .. cfg.platform .. "\n")
+  term.write("      Host: " .. cfg.host .. "\n")
+  term.write("     Owner: " .. cfg.owner .. "\n")
+  term.write("      Repo: " .. cfg.repo .. "\n")
+  term.write("  Download: " .. cfg.download_base .. "\n")
+  term.write("  SD asset: " .. cfg.sd_asset .. "\n")
+  term.write(" UF2 asset: " .. cfg.uf2_asset .. "\n")
+  if source == "built-in defaults" then
+    term.write("\nCreate /lua/shell/update_config.lua to override any of these;\n"
+      .. "see update_config.lua.example in the same directory.\n")
   end
 end
 
