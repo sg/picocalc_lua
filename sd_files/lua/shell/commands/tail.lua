@@ -8,6 +8,7 @@ return {
   usage = "<file> [n]",
   desc = "print last n lines [default 10]",
   args = "file number?",
+  pager = true,
   run = function(args)
     local num_lines = args.v[2] or 10
     local f <close> = fs.open(args.v[1], "r")

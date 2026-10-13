@@ -11,6 +11,7 @@ return {
   desc = "get WHOIS info [to file]",
   args = "string path?",
   needs = {"wifi"},
+  pager = true,
   run = function(args, sh)
     local target = args[1]
     local output_file = args[2]

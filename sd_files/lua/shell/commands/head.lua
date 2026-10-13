@@ -10,6 +10,7 @@ return {
   usage = "<file> [n]",
   desc = "print top n lines of a file",
   args = "file number?",
+  pager = true,
   run = function(args)
     local f <close> = fs.open(args.v[1], "r")
 

@@ -1010,6 +1010,7 @@ local builtin_commands = {
     usage = "[category|cmd]",
     desc = "show help for categories or commands",
     args = "string?",
+    pager = true,
     complete = function(sh, word, index)
       if index ~= 1 then
         return nil
@@ -1388,6 +1389,7 @@ local builtin_commands = {
     usage = "[n]",
     desc = "show command history [last n entries]",
     args = "number?",
+    pager = true,
     run = function(args, sh)
       local count = args.v[1] or #readline.history
       local start = math.max(1, #readline.history - count + 1)
