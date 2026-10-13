@@ -21,7 +21,9 @@ return {
   name = "psram",
   category = "util",
   aliases = {"psr",},
-  help = c.cyan.."psram"..c.yellow.." list|stats|alloc|write|read|free|freeall" .. c.white,
+  usage = "list|stats|alloc|write|read|free|freeall",
+  desc = "manage PSRAM buffers",
+  complete = "path",
   run = function(args, sh)
     if not args[1] then
       return sh:error("Usage: psram list|stats|alloc|free <buffer_name> [size]")

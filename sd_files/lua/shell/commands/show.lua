@@ -6,24 +6,15 @@
 
 ]]
 
-local c = require("lua/modules/simple-colors")
-
 return {
   name = "show",
   category = "util",
   aliases = {"view", "display"},
-  help = c.cyan.."show"..c.yellow.." <file.bmp>"..c.white.." - display BMP image on screen",
+  usage = "<file.bmp>",
+  desc = "display BMP image on screen",
+  args = "file",
   run = function(args, sh)
-    if not args[1] then
-      return sh:error("Usage: show <file.bmp>")
-    end
-
-    local path = sh:fs_path(sh:resolve_path(args[1]))
-    if not fs.exists(path) then
-      return sh:error("File not found: " .. args[1])
-    end
-
-    local ok, err = draw.showBMP(path)
+    local ok, err = draw.showBMP(args.v[1])
     if not ok then
       return sh:error(err or "Failed to display image")
     end

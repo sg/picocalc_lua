@@ -5,21 +5,12 @@
 
 ]]
 
--- ANSI color codes
-local c = require("lua/modules/simple-colors")
-
-local function free_mem()
-  package.loaded["lua/modules/http"] = nil
-  package.loaded["lua/modules/json"] = nil
-  package.loaded["lua/modules/serialize"] = nil
-  collectgarbage()
-end
-
 return {
   name = "wx",
   category = "net",
   aliases = {"weather"},
-  help = c.cyan.."wx"..c.yellow..""..c.white.." - download weather forecast",
+  desc = "download weather forecast",
+  needs = {"wifi"},
   run = function(args, sh)
 
     local ok, c = pcall(require,"lua/modules/simple-colors")
@@ -74,11 +65,11 @@ return {
     if fs.exists(wx_conf_path) then
       print("found " .. wx_conf_path)
       if loadConfig() then
-        using_config = true
+        using_conf = true
       end
     end
 
-    if using_config then
+    if using_conf then
       -- available locations in config
       local picker = {}
       for name, loc in pairs(wx_conf) do
@@ -97,7 +88,6 @@ return {
       if selection == "" then selection = "1" end
       if tonumber(selection) > #picker then
         print(c.red .. "Error: " .. c.white .. "invalid selection.")
-        free_mem()
         return
       end
 
@@ -113,18 +103,11 @@ return {
 
     local url = "https://api.open-meteo.com/v1/forecast?latitude=" .. lat .. "&longitude=" .. lon .. "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&wind_speed_unit=mph&temperature_unit=fahrenheit&precipitation_unit=inch"
   
-    if not wifi.isConnected() then
-      print("Wi-Fi not connected")
-      free_mem()
-      return
-    end
-
     print("Fetching current weather from api.open-meteocom...")
     local response, err = http.get(url)
 
     if not response then
       print("Request failed:" .. err)
-      free_mem()
       return
     end
 
@@ -132,7 +115,6 @@ return {
 
     if response.status >= 400 then
       print("Request failed with status " .. response.status)
-      free_mem()
       return
     end
 
@@ -146,7 +128,5 @@ return {
       print(c.cyan .. k .. c.white .. ": " .. c.green .. v .. c.white)
     end
     print("")
-    free_mem()
-
   end
 }

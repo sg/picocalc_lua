@@ -1,21 +1,17 @@
 -- Z-Machine File Info Command
 -- Display information about Z-machine story files
 
-local c = require("lua/modules/simple-colors")
 
 return {
     name = "zinfo",
     category = "games",
     aliases = {},
-    help = c.cyan .. "zinfo" .. c.yellow .. " <story_file>" .. c.white .. " - show info for z-story_file",
+    usage = "<story_file>",
+    desc = "show info for z-story_file",
+    args = "path",
 
     run = function(args, sh)
-        if #args == 0 then
-            return sh:error("Usage: zinfo <story-file>")
-        end
-
-        local filepath = sh:resolve_path(args[1])
-        local fs_path = sh:fs_path(filepath)
+        local fs_path = args.v[1]
 
         -- Check file exists
         if not fs.exists(fs_path) then
@@ -35,10 +31,6 @@ return {
 
         local zmachine = require("lua/zmachine/init")
         local info, err = zmachine.info(fs_path)
-
-        package.loaded["lua/zmachine/init"] = nil
-        package.loaded["lua/zmachine/memory"] = nil
-        collectgarbage("collect")
 
         if not info then
             return sh:error("Cannot read story: " .. (err or "unknown"))

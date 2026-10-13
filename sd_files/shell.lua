@@ -3,15 +3,62 @@
   A simple command-line interface (shell) for
   picocalc_lua.
 
-  Built-in commands are defined in the 'commands' 
+  Built-in commands are defined in the 'commands'
   table. External commands can be added by placing
   .lua files in /lua/shell/commands/
 
-  Each command module should return a table with:
-    name     - command name (string)
-    aliases  - optional aliases (table of strings)
-    help     - help text (string)
-    run      - handler function(args, shell)
+  Each command module returns a table with:
+    name      - command name (string)
+    aliases   - optional aliases (table of strings)
+    category  - help category: core, util, net, games
+    usage     - argument summary, e.g. "<file> [n]"
+    desc      - one-line description for help
+    long      - optional extra help text (string)
+    args      - optional spec of positional arguments,
+                checked before run is called (see below)
+    flags     - optional string of accepted flag letters,
+                e.g. "fv"; words like "-f" are removed
+                from args and recorded in args.flags
+    needs     - optional requirements, e.g. {"wifi"}
+    complete  - optional: "path" to complete every
+                argument as a path, or a function
+                (sh, word, index, prior_args) returning
+                a list of completions
+    keep_modules - true keeps modules required by the
+                command loaded after it returns
+    resident  - true keeps the command body in memory
+                after its first use (see below)
+    help      - optional preformatted help line; built
+                from name, usage and desc when absent
+    run       - handler function(args, sh, raw_input)
+
+  The args spec is a space-separated list of types:
+    file     existing file; args.v[i] is the fs path
+    dir      existing directory; args.v[i] is the fs path
+    entry    existing file or directory; fs path
+    path     any path; args.v[i] is the fs path
+    newpath  path that must not exist; fs path
+    number   numeric; args.v[i] is the number
+    string   anything; args.v[i] is the word
+  A type may be followed by "?" (optional), "?=default"
+  (optional with a default) or "..." (one or more;
+  "?..." for zero or more). Path types also set
+  args.abs[i] to the absolute shell path.
+
+  Before run is called the shell parses flags, checks
+  requirements and validates the arguments, printing
+  the usage line and skipping run on any problem. It
+  also fills in args.sh and args.raw, reports errors
+  with a traceback, and unloads any modules the command
+  loaded unless keep_modules is set.
+
+  External command files are run once at startup to
+  collect the fields above; the run function itself is
+  then discarded and the file is loaded again each time
+  the command executes, so idle commands cost no heap.
+  Set resident = true on a command, or
+  config.lazy_commands = false for all of them, to keep
+  bodies loaded instead.
 
 ]]
 
@@ -52,45 +99,85 @@ local shell = {
     load_external = true,
     history_file = "/lua/shell/.shell_history",
     max_history = 100,
+    traceback = true,
+    lazy_commands = true,
+    -- collector settings applied at startup; see shell:apply_gc
+    gc = {
+      mode = "incremental",
+      pause = 120,
+      stepmul = 600,
+    },
   },
+  -- last command's exit status: false when it failed or returned false
+  last_status = true,
 }
 -- shorthand color references
 local c = shell.colors
 
--- commands that support file/directory completion
-local file_commands = {
-  cd = true,
-  ls = true, 
-  cat = true,
-  cp = true,
-  mv = true,
-  rm = true,
-  mkdir = true,
-  rmdir = true,
-  edit = true,
-  vi = true,
-  run = true,
-  head = true,
-  tail = true,
-  xxd = true,
-  dir = true,
-  list = true,
-  nano = true,
-  del = true,
-  delete = true,
-  copy = true,
-  rename = true,
-  ren = true,
-  dofile = true,
-  exec = true,
-  page = true,
-  less = true,
-  psram = true,
-  psr = true,
-  zinfo = true,
-  zplay = true,
-  tar = true,
+-- requirement checks named by a command's 'needs' list
+shell.requirements = {
+  wifi = function()
+    if wifi and wifi.isConnected and wifi.isConnected() then
+      return true
+    end
+    return false, "Wi-Fi not connected"
+  end,
 }
+
+-- argument spec parsing
+
+local path_types = { file = true, dir = true, entry = true, path = true, newpath = true }
+local arg_types = { number = true, string = true }
+for t in pairs(path_types) do arg_types[t] = true end
+
+-- parse an args spec string into a list of {type, optional, default, rest}
+local function parse_spec(spec)
+  if spec == nil then
+    return nil
+  end
+
+  local list = {}
+  for word in spec:gmatch("%S+") do
+    local entry = {}
+    local t, rest = word:match("^(%a+)(.*)$")
+    rest = rest or word
+
+    if rest:sub(-3) == "..." then
+      entry.rest = true
+      rest = rest:sub(1, -4)
+    end
+
+    if rest:sub(1, 1) == "?" then
+      entry.optional = true
+      rest = rest:sub(2)
+      if rest:sub(1, 1) == "=" then
+        entry.default = rest:sub(2)
+        rest = ""
+      end
+    end
+
+    if not arg_types[t] or rest ~= "" then
+      return nil, "bad argument spec '" .. word .. "'"
+    end
+
+    entry.type = t
+    table.insert(list, entry)
+  end
+
+  return list
+end
+
+-- spec entry covering positional argument i, or nil if there is none
+local function spec_entry(spec, i)
+  if not spec or #spec == 0 then
+    return nil
+  end
+  if i > #spec then
+    local last = spec[#spec]
+    return last.rest and last or nil
+  end
+  return spec[i]
+end
 
 
 -- utility functions
@@ -115,6 +202,58 @@ end
 -- print success message
 function shell:success(msg)
   term.write(c.green .. msg .. c.white .. "\n")
+end
+
+-- apply config.gc: mode is "incremental" or "generational", the other
+-- keys are collectgarbage("param") names (pause, stepmul, stepsize,
+-- minormul, minormajor, majorminor) given in percent
+function shell:apply_gc()
+  local gc = self.config.gc
+  if not gc then
+    return
+  end
+
+  local ok, err = pcall(function()
+    if gc.mode then
+      collectgarbage(gc.mode)
+    end
+    for name, value in pairs(gc) do
+      if name ~= "mode" then
+        collectgarbage("param", name, value)
+      end
+    end
+  end)
+  if not ok then
+    self:warn("GC settings not applied: " .. tostring(err))
+  end
+end
+
+-- print the usage line for a command (by name or definition)
+function shell:usage(cmd, why)
+  local def = type(cmd) == "table" and cmd or self.commands[cmd]
+
+  if why then
+    term.write(c.red .. "Error: " .. c.white .. why .. "\n")
+  end
+
+  if def then
+    local line = c.cyan .. def.name
+    if def.usage then
+      line = line .. c.yellow .. " " .. def.usage
+    end
+    term.write("Usage: " .. line .. c.white .. "\n")
+  end
+
+  return false
+end
+
+-- build the one-line help entry for a command definition
+function shell:format_help(def)
+  local line = c.cyan .. def.name
+  if def.usage then
+    line = line .. c.yellow .. " " .. def.usage
+  end
+  return line .. c.white .. " - " .. (def.desc or "no description")
 end
 
 -- resolve a path relative to cwd
@@ -375,9 +514,6 @@ function shell:complete_path(partial)
   end
 
   table.sort(matches)
-  entries = nil
-  collectgarbage()
-
   return matches
 end
 
@@ -411,17 +547,36 @@ function shell:complete(buffer, cursor_x)
   local first_space = buffer:find(" ")
   local is_command = not first_space or cursor_x <= first_space
 
-  local completions
   if is_command then
-    -- complete command name
-    completions = self:complete_command(current_word)
+    return self:complete_command(current_word), word_start, cursor_x - 1
+  end
+
+  local cmd = buffer:match("^(%S+)")
+  local def = self.commands[cmd]
+  if not def then
+    return nil, word_start, cursor_x - 1
+  end
+
+  -- position of the current word among the positional arguments
+  local _, prior = self:parse_input(before_cursor:sub(1, word_start - 1))
+  local index = #prior + 1
+  if def.flags then
+    index = 1
+    for _, word in ipairs(prior) do
+      if not word:match("^%-%a+$") then
+        index = index + 1
+      end
+    end
+  end
+
+  local completions
+  local mode = def.complete
+  if type(mode) == "function" then
+    completions = mode(self, current_word, index, prior)
   else
-    -- check if the command supports file completion
-    local cmd = buffer:match("^(%S+)")
-    if file_commands[cmd] then
+    local entry = spec_entry(def.spec, index)
+    if mode == "path" or (entry and path_types[entry.type]) then
       completions = self:complete_path(current_word)
-    else
-      return nil, word_start, cursor_x - 1
     end
   end
 
@@ -469,8 +624,8 @@ end
 
 -- command registration
 
--- register a command
-function shell:register(cmd_def)
+-- register a command; file is set for commands indexed from disk
+function shell:register(cmd_def, file)
   if type(cmd_def) ~= "table" then
     return self:error("Invalid command definition")
   end
@@ -480,19 +635,44 @@ function shell:register(cmd_def)
   end
 
   if not cmd_def.run then
-    return self:error("Command must have a 'run' function")
+    return self:error("Command '" .. cmd_def.name .. "' must have a 'run' function")
   end
 
-  self.commands[cmd_def.name] = {
-    help = cmd_def.help or "No help available",
+  local spec, spec_err = parse_spec(cmd_def.args)
+  if spec_err then
+    return self:error("Command '" .. cmd_def.name .. "': " .. spec_err)
+  end
+
+  local def = {
+    name = cmd_def.name,
+    aliases = {},
     category = cmd_def.category or "util",
+    usage = cmd_def.usage,
+    desc = cmd_def.desc,
+    long = cmd_def.long,
+    spec = spec,
+    flags = cmd_def.flags,
+    needs = cmd_def.needs,
+    complete = cmd_def.complete,
+    keep_modules = cmd_def.keep_modules,
+    resident = cmd_def.resident,
+    file = file,
     run = cmd_def.run,
   }
+  def.help = cmd_def.help or self:format_help(def)
+
+  -- drop the body so the chunk can be collected; execute reloads it from file
+  if file and self.config.lazy_commands and not def.resident then
+    def.run = nil
+  end
+
+  self.commands[def.name] = def
 
   -- register aliases
-  if cmd_def.aliases then
-    for _, alias in ipairs(cmd_def.aliases) do
-      self.commands[alias] = self.commands[cmd_def.name]
+  for _, alias in ipairs(cmd_def.aliases or {}) do
+    if alias ~= "" then
+      self.commands[alias] = def
+      table.insert(def.aliases, alias)
     end
   end
 
@@ -518,7 +698,7 @@ function shell:load_external_commands()
       local ok, result = pcall(dofile, full_path)
 
       if ok and type(result) == "table" and result.name then
-        self:register(result)
+        self:register(result, full_path)
       elseif not ok then
         self:warn("Failed to load command: " .. entry.name)
         print(tostring(result))
@@ -527,26 +707,220 @@ function shell:load_external_commands()
   end
 end
 
+-- validate one word against a spec entry; returns value, absolute path
+function shell:check_arg(entry, word)
+  local t = entry.type
+
+  if t == "number" then
+    local n = tonumber(word)
+    if not n then
+      return nil, nil, "'" .. word .. "' is not a number"
+    end
+    return n
+  end
+
+  if not path_types[t] then
+    return word
+  end
+
+  local abs = self:resolve_path(word)
+  local fspath = self:fs_path(abs)
+  -- f_stat cannot stat the root and isDir raises on missing paths
+  local root = self:is_root(abs)
+  local exists = root or fs.exists(fspath)
+
+  if t == "newpath" then
+    if exists then
+      return nil, nil, "'" .. word .. "' already exists"
+    end
+  elseif t ~= "path" then
+    if not exists then
+      return nil, nil, "'" .. word .. "' not found"
+    end
+    if t ~= "entry" then
+      local is_dir = root or fs.isDir(fspath)
+      if t == "file" and is_dir then
+        return nil, nil, "'" .. word .. "' is a directory"
+      end
+      if t == "dir" and not is_dir then
+        return nil, nil, "'" .. word .. "' is not a directory"
+      end
+    end
+  end
+
+  return fspath, abs
+end
+
+-- parse flags, check requirements and validate positional
+-- arguments; returns false after reporting the first problem
+function shell:prepare_args(def, args, raw_input)
+  args.sh = self
+  args.raw = raw_input
+  args.flags = {}
+  args.v = {}
+  args.abs = {}
+
+  if def.flags then
+    local i = 1
+    while i <= #args do
+      local word = args[i]
+      if word == "--" then
+        table.remove(args, i)
+        break
+      elseif word:match("^%-%a+$") then
+        for letter in word:gmatch("%a") do
+          if not def.flags:find(letter, 1, true) then
+            return self:usage(def, "unknown flag -" .. letter)
+          end
+          args.flags[letter] = true
+        end
+        table.remove(args, i)
+      else
+        i = i + 1
+      end
+    end
+  end
+
+  if def.needs then
+    for _, need in ipairs(def.needs) do
+      local check = self.requirements[need]
+      local ok, msg = false, "unknown requirement '" .. need .. "'"
+      if check then
+        ok, msg = check()
+      end
+      if not ok then
+        return self:error(msg or (need .. " not available"))
+      end
+    end
+  end
+
+  local spec = def.spec
+  if not spec then
+    return true
+  end
+
+  for i = 1, math.max(#spec, #args) do
+    local entry = spec_entry(spec, i)
+    if not entry then
+      return self:usage(def, "too many arguments")
+    end
+
+    local word = args[i]
+    if word == nil and i <= #spec then
+      if entry.default then
+        word = entry.default
+        args[i] = word
+      elseif not entry.optional then
+        return self:usage(def)
+      end
+    end
+
+    if word ~= nil then
+      local v, abs, err = self:check_arg(entry, word)
+      if err then
+        return self:error(err)
+      end
+      args.v[i] = v
+      args.abs[i] = abs
+    end
+  end
+
+  return true
+end
+
+-- keep the frames inside the command; the shell's own frames below xpcall add nothing
+local function trace_handler(err)
+  local msg = debug.traceback(tostring(err), 2)
+  return (msg:gsub("\n%s*%[C%]: in %a+ 'xpcall'.*$", ""))
+end
+
+-- report a failed command, shortening keyboard interrupts
+function shell:report_failure(msg)
+  msg = tostring(msg)
+  local first = msg:match("^[^\n]*")
+
+  if first:match("interrupted$") then
+    term.write(c.yellow .. "Interrupted" .. c.white .. "\n")
+    return
+  end
+
+  if not self.config.traceback then
+    msg = first
+  end
+  self:error("Command failed: " .. msg)
+end
+
+-- load the run function of an indexed command from its file
+function shell:load_body(def)
+  local mod = dofile(def.file)
+  if type(mod) ~= "table" or type(mod.run) ~= "function" then
+    error("'" .. def.file .. "' did not return a command table")
+  end
+  if def.resident then
+    def.run = mod.run
+  end
+  return mod.run
+end
+
 -- execute a command
 function shell:execute(cmd, args, raw_input)
   if not cmd then return end
+  args = args or {}
 
-  local command = self.commands[cmd]
-  if command then
-    local ok, err = pcall(command.run, args, self, raw_input)
-    if not ok then
-      self:error("Command failed: " .. tostring(err))
-    end
-  else
+  local def = self.commands[cmd]
+  if not def then
     self:error("Unknown command: " .. cmd)
     term.write("Type 'help' for available commands\n")
+    self.last_status = false
+    return false
   end
+
+  local status = false
+  if self:prepare_args(def, args, raw_input) then
+    local loaded_before = {}
+    if not def.keep_modules then
+      for name in pairs(package.loaded) do
+        loaded_before[name] = true
+      end
+    end
+
+    -- the body is loaded after the snapshot so modules it requires are unloaded too
+    local run = def.run
+    if not run then
+      local ok, result = xpcall(self.load_body, trace_handler, self, def)
+      if ok then
+        run = result
+      else
+        self:report_failure(result)
+      end
+    end
+
+    if run then
+      local ok, result = xpcall(run, trace_handler, args, self, raw_input)
+      if ok then
+        status = result ~= false
+      else
+        self:report_failure(result)
+      end
+    end
+
+    if not def.keep_modules then
+      for name in pairs(package.loaded) do
+        if not loaded_before[name] then
+          package.loaded[name] = nil
+        end
+      end
+    end
+  end
+  self.last_status = status
 
   -- blit buffer if in buffer mode (for screenshot support)
   if _G._buffer_mode_blit then
     draw.blitBuffer()
   end
   collectgarbage()
+
+  return status
 end
 
 -- help category definitions
@@ -565,7 +939,22 @@ local builtin_commands = {
     name = "help",
     aliases = {"?"},
     category = "core",
-    help = c.cyan.."help"..c.yellow.." [category|cmd]"..c.white.." - show help for categories or commands",
+    usage = "[category|cmd]",
+    desc = "show help for categories or commands",
+    args = "string?",
+    complete = function(sh, word, index)
+      if index ~= 1 then
+        return nil
+      end
+      local matches = sh:complete_command(word)
+      for _, cat in ipairs(help_categories) do
+        if cat.id:sub(1, #word) == word then
+          table.insert(matches, cat.id)
+        end
+      end
+      table.sort(matches)
+      return matches
+    end,
     run = function(args, sh)
       if not args[1] then
         -- no args: show category list
@@ -587,26 +976,32 @@ local builtin_commands = {
           -- collect unique commands in this category
           local seen = {}
           local cmds = {}
-          for name, def in pairs(sh.commands) do
+          for _, def in pairs(sh.commands) do
             if not seen[def] and def.category == cat.id then
               seen[def] = true
-              table.insert(cmds, {name = name, help = def.help})
+              table.insert(cmds, def)
             end
           end
           table.sort(cmds, function(a, b) return a.name < b.name end)
-          for _, cmd in ipairs(cmds) do
-            term.write(" " .. cmd.help .. "\n")
+          for _, def in ipairs(cmds) do
+            term.write(" " .. def.help .. "\n")
           end
           return
         end
       end
 
       -- check if query matches a command
-      local cmd = sh.commands[query]
-      if cmd then
-        term.write(cmd.help .. "\n")
-      else
-        sh:error("Unknown command or category: " .. query)
+      local def = sh.commands[query]
+      if not def then
+        return sh:error("Unknown command or category: " .. query)
+      end
+
+      term.write(def.help .. "\n")
+      if #def.aliases > 0 then
+        term.write("  aliases: " .. table.concat(def.aliases, ", ") .. "\n")
+      end
+      if def.long then
+        term.write(def.long .. "\n")
       end
     end
   },
@@ -616,7 +1011,7 @@ local builtin_commands = {
     name = "exit",
     aliases = {"quit", "q"},
     category = "core",
-    help = c.cyan.."exit"..c.white.." - exit the shell",
+    desc = "exit the shell",
     run = function(args, sh)
       term.write("Exiting shell...\n")
       sh.running = false
@@ -628,24 +1023,14 @@ local builtin_commands = {
     name = "ls",
     aliases = {"dir", "list"},
     category = "core",
-    help = c.cyan.."ls"..c.yellow.." [dir]"..c.white.." - list directory contents",
+    usage = "[dir]",
+    desc = "list directory contents",
+    args = "dir?=.",
     run = function(args, sh)
-      local path = sh:resolve_path(args[1])
-      local fspath = sh:fs_path(path)
-
-      -- skip isDir check for root (f_stat can't stat root)
-      if not sh:is_root(path) then
-        if not fs.isDir(fspath) then
-          return sh:error("'" .. (args[1] or path) .. "' is not a directory")
-        end
-      end
-
       term.write(c.green.."-----------------------------------"..c.white.."\n")
-      term.write(c.green.." " .. path ..c.white..":\n")
+      term.write(c.green.." " .. args.abs[1] ..c.white..":\n")
       term.write("\n")
-      --term.write(c.green.."-----------------------------------"..c.white.."\n")
-      local entries = fs.list(fspath)
-      sh:print_dir(entries)
+      sh:print_dir(fs.list(args.v[1]))
     end
   },
 
@@ -653,10 +1038,11 @@ local builtin_commands = {
   {
     name = "cd",
     category = "core",
-    help = c.cyan.."cd"..c.yellow.." [dir|..|-]"..c.white.." - change directory",
+    usage = "[dir|..|-]",
+    desc = "change directory",
+    args = "dir?=/",
     run = function(args, sh)
-      local path = args[1] or "/"
-      sh:change_dir(path)
+      sh:change_dir(args[1])
     end
   },
 
@@ -665,7 +1051,7 @@ local builtin_commands = {
     name = "pwd",
     aliases = {"cwd"},
     category = "core",
-    help = c.cyan.."pwd"..c.white.." - print current directory",
+    desc = "print current directory",
     run = function(args, sh)
       term.write(sh.cwd .. "\n")
     end
@@ -676,46 +1062,20 @@ local builtin_commands = {
     name = "cat",
     aliases = {"type"},
     category = "core",
-    help = c.cyan.."cat"..c.yellow.." <file>"..c.white.." - display file contents",
-    run = function(args, sh)
-      if not args[1] then
-        return sh:error("Usage: cat <file>")
-      end
+    usage = "<file>",
+    desc = "display file contents",
+    args = "file",
+    run = function(args)
+      local f <close> = fs.open(args.v[1], "r")
 
-      local path = sh:resolve_path(args[1])
-      local fspath = sh:fs_path(path)
-
-      if not fs.exists(fspath) then
-        return sh:error("'" .. args[1] .. "' not found")
-      end
-
-      if fs.isDir(fspath) then
-        return sh:error("'" .. args[1] .. "' is a directory")
-      end
-
-      local f = fs.open(fspath, "r")
-      if not f then
-        return sh:error("Cannot open '" .. args[1] .. "'")
-      end
-
-      -- read/write 16KB at a time if wifi not
-      -- connected, otherwise reduce to 4KB
-      local block_size
-      if wifi.isConnected() then
-        block_size = 4096
-      else
-        block_size = 16384
-      end
-      -- force GC before read loop to reduce heap fragmentation
-      collectgarbage("collect")
+      -- smaller reads leave room for the Wi-Fi stack's buffers
+      local block_size = wifi.isConnected() and 4096 or 16384
       local block = f:read(block_size)
       while block ~= nil do
         term.write(block)
         block = f:read(block_size)
       end
-      f:close()
       term.write("\n")
-
     end
   },
 
@@ -724,35 +1084,30 @@ local builtin_commands = {
     name = "edit",
     aliases = {"vi", "nano"},
     category = "core",
-    help = c.cyan.."edit"..c.yellow.." <file>"..c.white.." - open file in editor",
+    usage = "<file>",
+    desc = "open file in editor",
+    args = "path",
     run = function(args, sh)
-      if not args[1] then
-        return sh:error("Usage: edit <file>")
-      end
-
-      local path = sh:resolve_path(args[1])
-      local fspath = sh:fs_path(path)
+      local fspath = args.v[1]
 
       if fs.exists(fspath) then
         if fs.isDir(fspath) then
           return sh:error("'" .. args[1] .. "' is a directory")
         end
         edit(fspath)
-      else
-        -- create new file?        
-        local ans = term.read("Create new file ".. c.green .. fspath .. c.white .. " ? y/[N]: ")
-        if ans ~= "y" then
-          term.write("Ok, not created.\n")
-        else
-          local f = fs.open(fspath, "w+")
-          if f then
-            f:close()
-            edit(fspath)
-          else
-            return sh:error("Cannot create '" .. args[1] .. "'")
-          end
-        end
+        return
       end
+
+      -- create new file?
+      local ans = term.read("Create new file ".. c.green .. fspath .. c.white .. " ? y/[N]: ")
+      if ans ~= "y" then
+        term.write("Ok, not created.\n")
+        return
+      end
+
+      local f = fs.open(fspath, "w+")
+      f:close()
+      edit(fspath)
     end
   },
 
@@ -761,24 +1116,11 @@ local builtin_commands = {
     name = "rm",
     aliases = {"del", "delete"},
     category = "core",
-    help = c.cyan.."rm"..c.yellow.." <file>"..c.white.." - delete file",
+    usage = "<file>",
+    desc = "delete file",
+    args = "file",
     run = function(args, sh)
-      if not args[1] then
-        return sh:error("Usage: rm <file>")
-      end
-
-      local path = sh:resolve_path(args[1])
-      local fspath = sh:fs_path(path)
-
-      if not fs.exists(fspath) then
-        return sh:error("'" .. args[1] .. "' not found")
-      end
-
-      if fs.isDir(fspath) then
-        return sh:error("'" .. args[1] .. "' is a directory (use rmdir)")
-      end
-
-      fs.delete(fspath)
+      fs.delete(args.v[1])
       sh:success("Deleted '" .. args[1] .. "'")
     end
   },
@@ -787,19 +1129,12 @@ local builtin_commands = {
   {
     name = "mkdir",
     category = "core",
-    help = c.cyan.."mkdir"..c.yellow.." <dir>"..c.white.." - create directory",
+    usage = "<dir>",
+    desc = "create directory",
+    args = "newpath",
     run = function(args, sh)
-      if not args[1] then
-        return sh:error("Usage: mkdir <dir>")
-      end
+      local fspath, path = args.v[1], args.abs[1]
 
-      local path = sh:resolve_path(args[1])
-      local fspath = sh:fs_path(path)
-
-      if fs.exists(fspath) then
-        return sh:error("'" .. path .. "' already exists")
-      end
-      
       fs.makeDir(fspath)
       if fs.exists(fspath) then
         sh:success("Created '" .. path .. "'")
@@ -813,34 +1148,18 @@ local builtin_commands = {
   {
     name = "rmdir",
     category = "core",
-    help = c.cyan.."rmdir"..c.yellow.." [-f] <dir>"..c.white.." - remove directory (-f = force recursive)",
+    usage = "[-f] <dir>",
+    desc = "remove directory (-f = force recursive)",
+    flags = "f",
+    args = "dir",
     run = function(args, sh)
-      local force = false
-      local dir_arg
+      local fspath, path = args.v[1], args.abs[1]
 
-      if args[1] == "-f" then
-        force = true
-        dir_arg = args[2]
-      else
-        dir_arg = args[1]
+      if sh:is_root(path) then
+        return sh:error("Cannot remove the root directory")
       end
 
-      if not dir_arg then
-        return sh:error("Usage: rmdir [-f] <dir>")
-      end
-
-      local path = sh:resolve_path(dir_arg)
-      local fspath = sh:fs_path(path)
-
-      if not fs.exists(fspath) then
-        return sh:error("'" .. path .. "' not found")
-      end
-
-      if not fs.isDir(fspath) then
-        return sh:error("'" .. path .. "' is not a directory")
-      end
-
-      if force then
+      if args.flags.f then
         local ans = term.read("Delete '" .. path .. "' and ALL contents? y/[N]: ")
         ans = ans and ans:lower() or ""
         if ans ~= "y" then
@@ -887,26 +1206,11 @@ local builtin_commands = {
     name = "mv",
     aliases = {"rename", "ren"},
     category = "core",
-    help = c.cyan.."mv"..c.yellow.." <src> <dst>"..c.white.." - move or rename file",
+    usage = "<src> <dst>",
+    desc = "move or rename file",
+    args = "entry newpath",
     run = function(args, sh)
-      if not args[1] or not args[2] then
-        return sh:error("Usage: mv <source> <destination>")
-      end
-
-      local src = sh:resolve_path(args[1])
-      local dst = sh:resolve_path(args[2])
-      local src_fs = sh:fs_path(src)
-      local dst_fs = sh:fs_path(dst)
-
-      if not fs.exists(src_fs) then
-        return sh:error("'" .. args[1] .. "' not found")
-      end
-
-      if fs.exists(dst_fs) then
-        return sh:error("'" .. args[2] .. "' already exists")
-      end
-
-      local ok, err = pcall(fs.move, src_fs, dst_fs)
+      local ok, err = pcall(fs.move, args.v[1], args.v[2])
       if ok then
         sh:success("Moved/renamed '" .. args[1] .. "' to '" .. args[2] .. "'")
       else
@@ -920,51 +1224,15 @@ local builtin_commands = {
     name = "cp",
     aliases = {"copy"},
     category = "core",
-    help = c.cyan.."cp"..c.yellow.." <source> <dest>"..c.white.." - copy file",
+    usage = "<source> <dest>",
+    desc = "copy file",
+    args = "file newpath",
     run = function(args, sh)
-      if not args[1] or not args[2] then
-        return sh:error("Usage: cp <source> <destination>")
-      end
+      local sf <close> = fs.open(args.v[1], "r")
+      local df <close> = fs.open(args.v[2], "w")
 
-      local src = sh:resolve_path(args[1])
-      local dst = sh:resolve_path(args[2])
-      local src_fs = sh:fs_path(src)
-      local dst_fs = sh:fs_path(dst)
-
-      if not fs.exists(src_fs) then
-        return sh:error("'" .. args[1] .. "' not found")
-      end
-
-      if fs.isDir(src_fs) then
-        return sh:error("Cannot copy directories")
-      end
-
-      if fs.exists(dst_fs) then
-        return sh:error("'" .. args[2] .. "' already exists")
-      end
-
-      -- open source file for reading
-      local sf = fs.open(src_fs, "r")
-      if not sf then
-        return sh:error("Cannot open for reading '" .. args[1] .. "'")
-      end
-
-      -- open dest file for writing
-      local df = fs.open(dst_fs, "w")
-      if not df then
-        return sh:error("Cannot open for writing '" .. args[2] .. "'")
-      end
-
-      -- read/write 16KB at a time if wifi not
-      -- connected, otherwise reduce to 4KB
-      local block_size
-      if wifi.isConnected() then
-        block_size = 4096
-      else
-        block_size = 16384
-      end
-      -- force GC before copy to reduce heap fragmentation
-      collectgarbage("collect")
+      -- smaller reads leave room for the Wi-Fi stack's buffers
+      local block_size = wifi.isConnected() and 4096 or 16384
       local block = sf:read(block_size)
       local bytes_copied = 0
       local blocks_copied = 0
@@ -982,9 +1250,6 @@ local builtin_commands = {
         block = sf:read(block_size)
       end
 
-      sf:close()
-      df:close()
-
       sh:success("\nCopied '" .. args[1] .. "' to '" .. args[2] .. "'")
     end
   },
@@ -994,12 +1259,13 @@ local builtin_commands = {
     name = "eval",
     aliases = {"lua"},
     category = "core",
-    help = c.cyan.."eval"..c.yellow.." <lua code>"..c.white.." - execute Lua code",
+    usage = "<lua code>",
+    desc = "execute Lua code",
     run = function(args, sh, raw_input)
       -- Extract raw code after command name to preserve quotes
       local code = raw_input and raw_input:match("^%s*%S+%s+(.+)$")
       if not code or code == "" then
-        return sh:error("Usage: eval <lua code>")
+        return sh:usage("eval")
       end
 
       local chunk, load_err = load(code)
@@ -1023,23 +1289,11 @@ local builtin_commands = {
     name = "run",
     aliases = {"dofile", "exec"},
     category = "core",
-    help = c.cyan.."run"..c.yellow.." <file.lua>"..c.white.." - execute Lua script",
-    run = function(args, sh)
-      if not args[1] then
-        return sh:error("Usage: run <file.lua>")
-      end
-
-      local path = sh:resolve_path(args[1])
-      local fspath = sh:fs_path(path)
-
-      if not fs.exists(fspath) then
-        return sh:error("'" .. args[1] .. "' not found")
-      end
-
-      local ok, err = pcall(dofile, fspath)
-      if not ok then
-        return sh:error(tostring(err))
-      end
+    usage = "<file.lua>",
+    desc = "execute Lua script",
+    args = "file",
+    run = function(args)
+      dofile(args.v[1])
     end
   },
 
@@ -1048,7 +1302,7 @@ local builtin_commands = {
     name = "clear",
     aliases = {"cls"},
     category = "core",
-    help = c.cyan.."clear"..c.white.." - clear the screen",
+    desc = "clear the screen",
     run = function(args, sh)
       term.clear()
     end
@@ -1059,9 +1313,11 @@ local builtin_commands = {
     name = "history",
     aliases = {"hist"},
     category = "core",
-    help = c.cyan.."history"..c.yellow.." [n]"..c.white.." - show command history [last n entries]",
+    usage = "[n]",
+    desc = "show command history [last n entries]",
+    args = "number?",
     run = function(args, sh)
-      local count = tonumber(args[1]) or #readline.history
+      local count = args.v[1] or #readline.history
       local start = math.max(1, #readline.history - count + 1)
 
       if #readline.history == 0 then
@@ -1080,7 +1336,7 @@ local builtin_commands = {
     name = "info",
     aliases = {"sysinfo"},
     category = "util",
-    help = c.cyan.."info"..c.white.." - show system information",
+    desc = "show system information",
     run = function(args, sh)
       term.write(c.green .. "PicoCalc System Info:" .. c.white .. "\n")
       term.write(c.cyan .. "    CPU Mhz:  " .. c.white .. sys.getClock() .. "\n")
@@ -1111,7 +1367,7 @@ local builtin_commands = {
     name = "batt",
     aliases = {"battery"},
     category = "util",
-    help = c.cyan.."batt"..c.white.." - show battery info",
+    desc = "show battery info",
     run = function(args, sh)
       local batt = sys.battery()
       term.write(c.cyan .. "Battery: " .. c.white .. batt .. " %\n")
@@ -1121,9 +1377,8 @@ local builtin_commands = {
   -- reload: reload external comands to update changes
   {
     name = "reload",
-    aliases = {},
     category = "core",
-    help = c.cyan.."reload"..c.white.." - reload external commands",
+    desc = "reload external commands",
     run = function(args, sh)
       sh:load_external_commands()
       term.write("External commands reloaded.\n")
@@ -1134,6 +1389,8 @@ local builtin_commands = {
 -- main: setup and loop
 
 local function main()
+  shell:apply_gc()
+
   -- register built-in commands
   for _, cmd in ipairs(builtin_commands) do
     shell:register(cmd)

@@ -23,47 +23,47 @@ end
 return {
   name = "ntp",
   category = "net",
-  help = c.cyan .. "ntp" .. c.yellow .. " [-s [server]]"
-    .. c.white .. " - show or sync NTP time",
+  usage = "[-s [server]]",
+  desc = "show or sync NTP time",
+  long = "  ntp             show last synced and current time\n"
+    .. "  ntp -s          sync time from pool.ntp.org\n"
+    .. "  ntp -s <server> sync time from a specific server",
+  flags = "s",
+  args = "string?",
   run = function(args, sh)
+    -- a server only makes sense together with -s
+    if args[1] and not args.flags.s then
+      return sh:usage("ntp")
+    end
+
     local ntp = require("lua/modules/ntp")
 
-    if args[1] == "-s" then
-      -- sync mode
+    if args.flags.s then
       if not wifi.isConnected() then
-        package.loaded["lua/modules/ntp"] = nil
         return sh:error("Wi-Fi not connected")
       end
 
-      local server = args[2]
+      local server = args[1]
       term.write("Syncing from " .. c.cyan
         .. (server or "pool.ntp.org") .. c.white .. "...\n")
 
       local epoch, err = ntp.sync(server)
       if not epoch then
-        package.loaded["lua/modules/ntp"] = nil
         return sh:error("NTP sync failed: " .. (err or "unknown"))
       end
 
       term.write(c.green .. "Synced!" .. c.white .. "\n")
       show_time(ntp, "Time:", epoch)
-
-    elseif args[1] then
-      sh:error("Usage: ntp [-s [server]]")
-
-    else
-      -- display mode
-      if not _G.epoch_boot then
-        term.write(c.yellow .. "No NTP sync yet." .. c.white .. "\n")
-        term.write("Run " .. c.cyan .. "ntp -s" .. c.white .. " to sync.\n")
-        package.loaded["lua/modules/ntp"] = nil
-        return
-      end
-
-      show_time(ntp, "Last sync:", _G.epoch_time)
-      show_time(ntp, "Current:", ntp.time())
+      return
     end
 
-    package.loaded["lua/modules/ntp"] = nil
+    if not _G.epoch_boot then
+      term.write(c.yellow .. "No NTP sync yet." .. c.white .. "\n")
+      term.write("Run " .. c.cyan .. "ntp -s" .. c.white .. " to sync.\n")
+      return
+    end
+
+    show_time(ntp, "Last sync:", _G.epoch_time)
+    show_time(ntp, "Current:", ntp.time())
   end,
 }

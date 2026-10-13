@@ -1,21 +1,18 @@
 -- Z-Machine Game Player Shell Command
 -- Run interactive fiction games (.z3, .z4, .z5, .z8 files)
 
-local c = require("lua/modules/simple-colors")
 
 return {
     name = "zplay",
     category = "games",
     aliases = {"zork", "zmachine"},
-    help = c.cyan .. "zplay" .. c.yellow .. " <story_file>" .. c.white .. " run z-machine for <story_file>",
+    usage = "<story_file>",
+    desc = "run z-machine for <story_file>",
+    long = "Supported formats: .z1 through .z8\nExample: zplay zork1.z3",
+    args = "path",
 
     run = function(args, sh)
-        if #args == 0 then
-            return sh:error("Usage: zplay <story-file>\n\nSupported formats: .z1 through .z8\nExample: zplay zork1.z3")
-        end
-
-        local filepath = sh:resolve_path(args[1])
-        local fs_path = sh:fs_path(filepath)
+        local fs_path = args.v[1]
 
         -- Check file exists
         if not fs.exists(fs_path) then
@@ -45,7 +42,6 @@ return {
         local info, err = zmachine.info(fs_path)
 
         if not info then
-            package.loaded["lua/zmachine/init"] = nil
             return sh:error("Cannot read story file: " .. (err or "unknown error"))
         end
 
@@ -55,16 +51,6 @@ return {
 
         -- Run the game
         local ok, run_err = zmachine.run(fs_path)
-
-        -- Clean up modules
-        package.loaded["lua/zmachine/init"] = nil
-        package.loaded["lua/zmachine/vm"] = nil
-        package.loaded["lua/zmachine/memory"] = nil
-        package.loaded["lua/zmachine/text"] = nil
-        package.loaded["lua/zmachine/objects"] = nil
-        package.loaded["lua/zmachine/io"] = nil
-        package.loaded["lua/zmachine/opcodes"] = nil
-        collectgarbage("collect")
 
         if not ok then
             return sh:error("Game error: " .. (run_err or "unknown"))

@@ -3,33 +3,22 @@
   ICMP ping (using socket.ping)
 ]]
 
--- ANSI color codes
-local c = require("lua/modules/simple-colors")
-
 return {
   name = "ping",
   category = "net",
-  aliases = {""},
-  help = c.cyan.."ping"..c.yellow.." <host> [count]"..c.white.." - ICMP ping host",
-  run = function(args, sh)
-    if not args[1] then
-      return sh:error("Usage: ping <host> [count]")
-    end
-
-    if not wifi.isConnected() then
-      return sh:error("Wi-Fi not connected")
-    end
-
+  usage = "<host> [count]",
+  desc = "ICMP ping host",
+  args = "string number?",
+  needs = {"wifi"},
+  run = function(args)
     local host = args[1]
-    local count = tonumber(args[2]) or 4
+    local count = args.v[2] or 4
 
     print(string.format("PING %s", host))
 
     local successes = 0
     local total_time = 0
     local resolved_ip = nil
-    local now = 0
-    local later = 0
     for i = 1, count do
       local result, err = socket.ping(host, 3000)
 
@@ -46,10 +35,6 @@ return {
       else
         print(string.format("  #%d: %s", i, err or "failed"))
       end
-
-      -- short delay between pings
-      --for j = 1, 100 do end 
-      
     end
 
     print("")

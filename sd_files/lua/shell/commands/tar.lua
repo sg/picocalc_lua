@@ -19,25 +19,22 @@ local BLOCK = 512
 local ZERO_BLOCK = string.rep("\0", BLOCK)
 local READ_SIZE = 4096
 
--- encode number as null-terminated octal string of given width
-local function to_octal(n, width)
-  local s = string.format("%o", n)
-  local pad = width - 1 - #s
-  if pad < 0 then pad = 0 end
-  return string.rep("0", pad) .. s .. "\0"
+-- UStar header layout shared by the writer and the reader:
+-- name mode uid gid size mtime chksum type linkname magic
+-- version uname gname devmajor devminor prefix pad
+local HEADER_FMT = "c100 c8 c8 c8 c12 c12 c8 c1 c100 c6 c2 c32 c32 c8 c8 c155 c12"
+assert(string.packsize(HEADER_FMT) == BLOCK)
+
+-- text before the first NUL of a fixed-width field
+local function cstring(s)
+  return (s:match("^[^\0]*"))
 end
 
--- decode octal string to number
+-- decode octal field to number
 local function from_octal(s)
-  s = s:gsub("[\0 ]+$", "")
+  s = cstring(s):gsub("[%s]+$", "")
   if s == "" then return 0 end
   return tonumber(s, 8) or 0
-end
-
--- pad a string with nulls to a given length
-local function pad(s, len)
-  if #s >= len then return s:sub(1, len) end
-  return s .. string.rep("\0", len - #s)
 end
 
 -- compute tar header checksum
@@ -55,7 +52,7 @@ local function calc_checksum(hdr)
   return sum
 end
 
--- build a 512-byte UStar header block
+-- build a 512-byte UStar header block; nil, err if the name cannot fit
 local function make_header(name, size, is_dir)
   if is_dir and name:sub(-1) ~= "/" then
     name = name .. "/"
@@ -68,33 +65,34 @@ local function make_header(name, size, is_dir)
     for i = math.max(1, #name - 99), math.min(#name, 155) do
       if name:sub(i, i) == "/" then split = i end
     end
-    if split then
-      prefix = name:sub(1, split - 1)
-      name = name:sub(split + 1)
+    if not split then
+      return nil, "Name too long for tar: " .. name
     end
+    prefix = name:sub(1, split - 1)
+    name = name:sub(split + 1)
   end
 
-  local hdr = pad(name, 100)                            --   0: name
-    .. (is_dir and "0000755\0" or "0000644\0")           -- 100: mode
-    .. to_octal(0, 8)                                    -- 108: uid
-    .. to_octal(0, 8)                                    -- 116: gid
-    .. to_octal(is_dir and 0 or size, 12)                -- 124: size
-    .. to_octal(0, 12)                                   -- 136: mtime
-    .. "        "                                         -- 148: checksum placeholder
-    .. (is_dir and "5" or "0")                           -- 156: typeflag
-    .. string.rep("\0", 100)                             -- 157: linkname
-    .. "ustar\0"                                         -- 257: magic
-    .. "00"                                              -- 263: version
-    .. pad("", 32)                                       -- 265: uname
-    .. pad("", 32)                                       -- 297: gname
-    .. to_octal(0, 8)                                    -- 329: devmajor
-    .. to_octal(0, 8)                                    -- 337: devminor
-    .. pad(prefix, 155)                                  -- 345: prefix
-    .. string.rep("\0", 12)                              -- 500: padding
+  -- pack zero-fills every field; octal fields leave room for their NUL
+  local function build(checksum)
+    return HEADER_FMT:pack(
+      name,
+      is_dir and "0000755" or "0000644",
+      "0000000", "0000000",
+      string.format("%011o", is_dir and 0 or size),
+      "00000000000",
+      checksum,
+      is_dir and "5" or "0",
+      "",
+      "ustar", "00",
+      "", "",
+      "0000000", "0000000",
+      prefix,
+      "")
+  end
 
-  -- compute and splice in checksum
-  local chk = string.format("%06o\0 ", calc_checksum(hdr))
-  return hdr:sub(1, 148) .. chk .. hdr:sub(157)
+  -- the checksum is computed over the header with its own field blank
+  local hdr = build("        ")
+  return build(string.format("%06o\0 ", calc_checksum(hdr)))
 end
 
 -- parse a 512-byte header block
@@ -102,23 +100,23 @@ end
 local function parse_header(block)
   if block == ZERO_BLOCK then return nil end
 
-  local name = block:sub(1, 100):gsub("\0.*$", "")
+  local name, _, _, _, size, _, checksum, typeflag, _, _, _, _, _, _, _, prefix
+    = HEADER_FMT:unpack(block)
+
+  name = cstring(name)
   if name == "" then return nil end
 
-  local prefix = block:sub(346, 500):gsub("\0.*$", "")
+  prefix = cstring(prefix)
   if prefix ~= "" then
     name = prefix .. "/" .. name
   end
 
-  local typeflag = block:sub(157, 157)
-  local size = from_octal(block:sub(125, 136))
-  local is_dir = typeflag == "5" or name:sub(-1) == "/"
-
-  -- verify checksum
-  local stored = from_octal(block:sub(149, 156))
-  local valid = (stored == calc_checksum(block))
-
-  return { name = name, size = size, is_dir = is_dir, valid = valid }
+  return {
+    name = name,
+    size = from_octal(size),
+    is_dir = typeflag == "5" or name:sub(-1) == "/",
+    valid = from_octal(checksum) == calc_checksum(block),
+  }
 end
 
 -- create all directories along a path
@@ -147,16 +145,11 @@ local function write_file_data(out, fspath, size)
   if not f then return false, "Cannot read: " .. fspath end
 
   local rem = size
-  local chunks = 0
   while rem > 0 do
     local data = f:read(math.min(READ_SIZE, rem))
     if not data then break end
     out:write(data)
     rem = rem - #data
-    chunks = chunks + 1
-    if chunks % 4 == 0 then
-      collectgarbage("collect")
-    end
   end
   f:close()
 
@@ -176,10 +169,11 @@ local function walk_and_write(out, fspath, arcname, sh)
 
   if fs.isDir(fspath) then
     -- write directory header
-    out:write(make_header(arcname .. "/", 0, true))
+    local hdr, err = make_header(arcname .. "/", 0, true)
+    if not hdr then return nil, err end
+    out:write(hdr)
     term.write("  " .. c.yellow .. arcname .. "/" .. c.white .. "\n")
     count = 1
-    collectgarbage("collect")
 
     -- list and recurse into children
     local items = fs.list(fspath)
@@ -194,12 +188,12 @@ local function walk_and_write(out, fspath, arcname, sh)
         count = count + n
       end
     end
-    items = nil
-    collectgarbage("collect")
   else
     -- write file header + data
     local size = fs.getSize(fspath) or 0
-    out:write(make_header(arcname, size, false))
+    local hdr, err = make_header(arcname, size, false)
+    if not hdr then return nil, err end
+    out:write(hdr)
 
     if size > 0 then
       local ok, err = write_file_data(out, fspath, size)
@@ -208,7 +202,6 @@ local function walk_and_write(out, fspath, arcname, sh)
 
     term.write("  " .. arcname .. "\n")
     count = 1
-    collectgarbage("collect")
   end
 
   return count
@@ -299,7 +292,6 @@ local function tar_extract(archive_fs, dest, sh)
           skip_data(f, h.size)
           term.write("  " .. c.dim .. h.name .. " (skipped)" .. c.reset .. "\n")
           skipped = skipped + 1
-          collectgarbage("collect")
           goto continue
         end
       end
@@ -315,16 +307,11 @@ local function tar_extract(archive_fs, dest, sh)
       end
 
       local rem = h.size
-      local chunks = 0
       while rem > 0 do
         local data = f:read(math.min(READ_SIZE, rem))
         if not data then break end
         out:write(data)
         rem = rem - #data
-        chunks = chunks + 1
-        if chunks % 4 == 0 then
-          collectgarbage("collect")
-        end
       end
       out:flush()
       out:close()
@@ -340,7 +327,6 @@ local function tar_extract(archive_fs, dest, sh)
 
     count = count + 1
     ::continue::
-    collectgarbage("collect")
   end
 
   f:close()
@@ -391,7 +377,6 @@ local function tar_list(archive_fs, sh)
 
     count = count + 1
     total = total + h.size
-    collectgarbage("collect")
   end
 
   f:close()
@@ -404,8 +389,12 @@ end
 return {
   name = "tar",
   category = "util",
-  help = c.cyan .. "tar" .. c.yellow .. " <c|x|t> <archive> [files...]"
-    .. c.white .. " - tar archive tool",
+  usage = "<c|x|t> <archive> [files...]",
+  desc = "tar archive tool",
+  long = "  tar c <archive> <file1> [file2] ...  create\n"
+    .. "  tar x <archive> [dir]                extract\n"
+    .. "  tar t <archive>                      list",
+  complete = "path",
   run = function(args, sh)
     if #args < 2 then
       term.write("Usage:\n")

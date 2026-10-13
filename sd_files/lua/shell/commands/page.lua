@@ -447,22 +447,11 @@ return {
   name = "page",
   category = "util",
   aliases = {"less", "more"},
-  help = COLOR.cyan .. "page" .. COLOR.yellow .. " <file>" .. COLOR.white .. " - view file with scrolling",
+  usage = "<file>",
+  desc = "view file with scrolling",
+  args = "file",
   run = function(args, sh)
-    if not args[1] then
-      return sh:error("Usage: page <file>")
-    end
-
-    local path = sh:resolve_path(args[1])
-    local fspath = sh:fs_path(path)
-
-    if not fs.exists(fspath) then
-      return sh:error("'" .. args[1] .. "' not found")
-    end
-
-    if fs.isDir(fspath) then
-      return sh:error("'" .. args[1] .. "' is a directory")
-    end
+    local fspath = args.v[1]
 
     -- turn off cursor blink
     term.setCursorBlink(false)

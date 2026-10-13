@@ -3,19 +3,15 @@
   (requires the whois.lua module in shell/modules)
 ]]
 
--- ANSI color codes
-local c = require("lua/modules/simple-colors")
-
 return {
   name = "whois",
   category = "net",
   aliases = {"who"},
-  help = c.cyan.."whois"..c.yellow.." <domain|ip> [file]"..c.white.." - get WHOIS info [to file]",
+  usage = "<domain|ip> [file]",
+  desc = "get WHOIS info [to file]",
+  args = "string path?",
+  needs = {"wifi"},
   run = function(args, sh)
-    if not args[1] then
-      return sh:error("Usage: whois <domain|ip address> [output_file]")
-    end
-
     local target = args[1]
     local output_file = args[2]
 
@@ -34,18 +30,10 @@ return {
     end
 
     if output_file then
-      -- save to file
-      local path = sh:resolve_path(output_file)
-      local fspath = sh:fs_path(path)
-      local f = fs.open(fspath, "w")
-      if not f then
-        return sh:error("Cannot write to " .. output_file)
-      end
+      local f <close> = fs.open(args.v[2], "w")
       f:write(response)
-      f:close()
       sh:success(string.format("Saved %d bytes to %s", #response, output_file))
     else
-      -- print to console
       print("")
       print(response)
     end

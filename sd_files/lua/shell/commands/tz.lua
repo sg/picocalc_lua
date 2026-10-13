@@ -13,10 +13,13 @@ local c = require("lua/modules/simple-colors")
 return {
   name = "tz",
   category = "util",
-  help = c.cyan .. "tz" .. c.yellow .. " [offset]"
-    .. c.white .. " - view or set UTC timezone offset",
+  usage = "[offset]",
+  desc = "view or set UTC timezone offset",
+  args = "number?",
   run = function(args, sh)
-    if not args[1] then
+    local offset = args.v[1]
+
+    if not offset then
       -- display current timezone
       local tz = _G.time_zone
       if tz then
@@ -32,12 +35,6 @@ return {
       return
     end
 
-    -- parse and validate offset
-    local offset = tonumber(args[1])
-    if not offset then
-      return sh:error("Invalid offset: " .. args[1]
-        .. "\nExpected a number (e.g. -5, 0, 5.5)")
-    end
     if offset < -12 or offset > 14 then
       return sh:error("Offset out of range (-12 to +14)")
     end
@@ -57,14 +54,10 @@ return {
     conf.time_zone = offset
 
     local serialize = require("lua/modules/serialize")
-    local f = fs.open(conf_path, "w")
-    if f then
-      serialize.toFile(conf, f)
-      f:write("\n")
-      f:flush()
-      f:close()
-    end
-    package.loaded["lua/modules/serialize"] = nil
+    local f <close> = fs.open(conf_path, "w")
+    serialize.toFile(conf, f)
+    f:write("\n")
+    f:flush()
 
     local sign = offset >= 0 and "+" or ""
     sh:success("Timezone set to UTC" .. sign .. tostring(offset))
