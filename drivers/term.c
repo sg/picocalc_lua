@@ -233,6 +233,22 @@ void term_erase_from_cursor() {
 		lcd_fill(ansi.bg, x, y - lcd_current_height, LCD_WIDTH - x, font.glyph_height);
 }
 
+// The panel cannot be read back, so this is how a screen drawn in direct mode gets
+// reproduced inside a freshly enabled framebuffer.
+bool term_redraw() {
+	if (!shadow_ready()) return false;
+	// the shadow follows the viewport, which sits at the hardware scroll offset only in direct mode
+	int base = lcd_get_buffer_mode() == LCD_BUFFERMODE_DIRECT ? ansi.scroll : 0;
+	for (int row = 0; row < shadow_rows; row++) {
+		cell_t* line = shadow + row * shadow_cols;
+		int y = (base + row) * font.glyph_height;
+		for (int col = 0; col < shadow_cols; col++) {
+			term_draw_char(col * font.glyph_width, y, line[col].fg, line[col].bg, line[col].c);
+		}
+	}
+	return true;
+}
+
 // Redraws the cursor cell from the shadow (inverted while on) so the glyph survives every blink;
 // without a shadow it falls back to the old one-pixel bar.
 static void cursor_paint(bool on) {

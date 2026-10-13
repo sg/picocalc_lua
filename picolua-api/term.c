@@ -36,6 +36,11 @@ static int l_term_setCursorBlink(lua_State* L) {
 	return 0;
 }
 
+static int l_term_redraw(lua_State* L) {
+	lua_pushboolean(L, term_redraw());
+	return 1;
+}
+
 static int l_term_getSize(lua_State* L) {
 	lua_pushinteger(L, font.term_width);
 	lua_pushinteger(L, font.term_height);
@@ -138,6 +143,7 @@ int luaopen_term(lua_State *L) {
 		{"setCursorPos", l_term_setCursorPos},
 		{"getCursorBlink", l_term_getCursorBlink},
 		{"setCursorBlink", l_term_setCursorBlink},
+		{"redraw", l_term_redraw},
 		{"getSize", l_term_getSize},
 		{"getFontSize", l_term_getFontSize},
 		{"getFont", l_term_getFont},

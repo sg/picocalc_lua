@@ -785,15 +785,10 @@ int lcd_show_bmp(const char* filename, int x, int y) {
 	uint16_t* row_buf = malloc(width * 2);
 	if (!row_buf) { free(read_buf); f_close(&file); return -3; }
 
-	// Process each row
-	for (int row = 0; row < height; row++) {
-		// Calculate screen Y position
-		int screen_y;
-		if (top_down) {
-			screen_y = y + row;
-		} else {
-			screen_y = y + (height - 1 - row);
-		}
+	// walk the screen top to bottom; bottom-up files store that row last
+	for (int i = 0; i < height; i++) {
+		int row = top_down ? i : height - 1 - i;
+		int screen_y = y + i;
 
 		// Skip rows outside screen
 		if (screen_y < 0 || screen_y >= lcd_current_height) continue;

@@ -54,6 +54,7 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 	- [`setCursorPos(x, y)`](#setcursorposx-y)
 	- [`getCursorBlink()`](#getcursorblink)
 	- [`setCursorBlink(blink)`](#setcursorblinkblink)
+	- [`redraw()`](#redraw)
 	- [`getSize()`](#getsize)
 	- [`clear()`](#clear)
 	- [`clearLine()`](#clearline)
@@ -81,6 +82,7 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 	- [`triangle(c1, x1, y1, c2, x2, y2, c3, x3, y3)`](#trianglec1-x1-y1-c2-x2-y2-c3-x3-y3)
 	- [`enableBuffer(mode, [dirty])`](#enablebuffermode-dirty)
 	- [`blitBuffer()`](#blitbuffer)
+	- [`getBufferMode()`](#getbuffermode)
 	- [`loadBMPSprites(filename, [width], [height], [mask])`](#loadbmpspritesfilename-width-height-mask)
 	- [`loadSprites(filename)`](#loadspritesfilename)
 	- [`newSprites([width], [height], [count], [mask])`](#newspriteswidth-height-count-mask)
@@ -561,6 +563,12 @@ Sets the terminal cursor blinking
 **Parameters**
 1. `blink : boolean` - Whether or not the cursor blink should be active
 
+## `redraw()`
+Repaints the whole terminal from its shadow copy of the screen. The panel cannot be read back, so this is how a screen drawn in direct mode is reproduced inside a freshly enabled framebuffer, for example before [`draw.screenshot`](#draw---drawing-functions) is called
+
+**Returns**
+1. `boolean` - `false` if the shadow is not available
+
 ## `getSize()`
 Gets the terminal size
 
@@ -760,6 +768,12 @@ The RAM framebuffer is dynamically allocated when enabled and freed when disable
 
 ## `blitBuffer()`
 Blit the contents of the framebuffer to the screen
+
+## `getBufferMode()`
+Gets the framebuffer mode currently active
+
+**Returns**
+1. `integer` - `0` for direct drawing, `1` for PSRAM, `2` for RAM, as passed to [`enableBuffer`](#enablebuffermode-dirty)
 
 ## `loadBMPSprites(filename, [width], [height], [mask])`
 Loads a spritesheet to memory for blitting sprites to the screen. Formats supported are 24bit and 32bit BMP, sprites are indexed top left to bottom right as an atlas

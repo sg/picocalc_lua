@@ -21,6 +21,7 @@ void stdio_picocalc_init();
 void stdio_picocalc_deinit();
 void stdio_picocalc_out_chars(const char *buf, int length);
 void term_clear();
+bool term_redraw();
 void term_erase_line(int y);
 void term_erase_current_line();
 int term_get_width();
