@@ -46,6 +46,7 @@ return {
   usage = "<file> [count]",
   desc = "print hex/ascii values of file",
   args = "file number?",
+  pager = true,
   run = function(args)
     local fspath = args.v[1]
     local max_bytes = args.v[2] or 256

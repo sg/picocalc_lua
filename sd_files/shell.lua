@@ -28,6 +28,8 @@
                 command loaded after it returns
     resident  - true keeps the command body in memory
                 after its first use (see below)
+    pager     - true adds a -p flag that pages the
+                command's output (see modules/pager.lua)
     help      - optional preformatted help line; built
                 from name, usage and desc when absent
     run       - handler function(args, sh, raw_input)
@@ -250,6 +252,9 @@ end
 -- build the one-line help entry for a command definition
 function shell:format_help(def)
   local line = c.cyan .. def.name
+  if def.pager then
+    line = line .. c.yellow .. " [-p]"
+  end
   if def.usage then
     line = line .. c.yellow .. " " .. def.usage
   end
@@ -652,6 +657,7 @@ function shell:register(cmd_def, file)
     long = cmd_def.long,
     spec = spec,
     flags = cmd_def.flags,
+    pager = cmd_def.pager,
     needs = cmd_def.needs,
     complete = cmd_def.complete,
     keep_modules = cmd_def.keep_modules,
@@ -660,6 +666,10 @@ function shell:register(cmd_def, file)
     run = cmd_def.run,
   }
   def.help = cmd_def.help or self:format_help(def)
+
+  if def.pager and not (def.flags and def.flags:find("p", 1, true)) then
+    def.flags = (def.flags or "") .. "p"
+  end
 
   -- drop the body so the chunk can be collected; execute reloads it from file
   if file and self.config.lazy_commands and not def.resident then
@@ -877,6 +887,18 @@ function shell:execute(cmd, args, raw_input)
 
   local status = false
   if self:prepare_args(def, args, raw_input) then
+    local pager, failed
+    if def.pager and args.flags.p then
+      -- required before the snapshot below so it stays resident once used
+      local ok, result = pcall(require, "lua/shell/modules/pager")
+      if ok then
+        pager = result
+      else
+        failed = true
+        self:report_failure(result)
+      end
+    end
+
     local loaded_before = {}
     if not def.keep_modules then
       for name in pairs(package.loaded) do
@@ -886,7 +908,7 @@ function shell:execute(cmd, args, raw_input)
 
     -- the body is loaded after the snapshot so modules it requires are unloaded too
     local run = def.run
-    if not run then
+    if not run and not failed then
       local ok, result = xpcall(self.load_body, trace_handler, self, def)
       if ok then
         run = result
@@ -895,8 +917,13 @@ function shell:execute(cmd, args, raw_input)
       end
     end
 
-    if run then
-      local ok, result = xpcall(run, trace_handler, args, self, raw_input)
+    if run and not failed then
+      local ok, result
+      if pager then
+        ok, result = pager.run(run, args, self, raw_input)
+      else
+        ok, result = xpcall(run, trace_handler, args, self, raw_input)
+      end
       if ok then
         status = result ~= false
       else
@@ -1065,6 +1092,7 @@ local builtin_commands = {
     usage = "<file>",
     desc = "display file contents",
     args = "file",
+    pager = true,
     run = function(args)
       local f <close> = fs.open(args.v[1], "r")
 
