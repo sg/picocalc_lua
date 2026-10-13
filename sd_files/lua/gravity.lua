@@ -18,7 +18,7 @@
 local WIDTH = 320
 local HEIGHT = 320
 local DEFAULT_DIAM = 5    -- default body diameter in pixels
-local FRAME_MS = 0.02     -- target ~50 FPS
+local FRAME_SECS = 0.02   -- target ~50 FPS
 local CONF_PATH = "lua/gravity.conf"
 
 local sin = math.sin
@@ -73,6 +73,8 @@ local function init_bodies(conf)
       y = def.y or HEIGHT / 2,
       vx = vx,
       vy = vy,
+      ax = 0,
+      ay = 0,
       color = colors.fromRGB(c[1], c[2], c[3]),
       fixed = def.fixed or false,
       alive = true,
@@ -89,35 +91,47 @@ end
 ----------------------------------------------------------------------
 local function physics_step(bodies, G, dt, soften)
   local n = #bodies
+  local soft_sq = soften * soften
 
-  -- accumulate acceleration
   for i = 1, n do
     local a = bodies[i]
-    if a.alive and not a.fixed and not a.escaped then
-      local ax, ay = 0, 0
-      for j = 1, n do
-        if i ~= j then
-          local b = bodies[j]
-          if b.alive then
+    a.ax, a.ay = 0, 0
+  end
+
+  -- each pair once: the pull is equal and opposite, and fixed or escaped
+  -- bodies still attract the others even though they no longer move
+  for i = 1, n - 1 do
+    local a = bodies[i]
+    if a.alive then
+      local a_moves = not (a.fixed or a.escaped)
+      for j = i + 1, n do
+        local b = bodies[j]
+        if b.alive then
+          local b_moves = not (b.fixed or b.escaped)
+          if a_moves or b_moves then
             local dx = b.x - a.x
             local dy = b.y - a.y
-            local dist_sq = dx * dx + dy * dy + soften * soften
-            local dist = sqrt(dist_sq)
-            local force = G * b.mass / dist_sq
-            ax = ax + force * dx / dist
-            ay = ay + force * dy / dist
+            local dist_sq = dx * dx + dy * dy + soft_sq
+            local f = G / (dist_sq * sqrt(dist_sq))
+            if a_moves then
+              a.ax = a.ax + f * b.mass * dx
+              a.ay = a.ay + f * b.mass * dy
+            end
+            if b_moves then
+              b.ax = b.ax - f * a.mass * dx
+              b.ay = b.ay - f * a.mass * dy
+            end
           end
         end
       end
-      a.vx = a.vx + ax * dt
-      a.vy = a.vy + ay * dt
     end
   end
 
-  -- integrate positions
   for i = 1, n do
     local a = bodies[i]
     if a.alive and not a.fixed and not a.escaped then
+      a.vx = a.vx + a.ax * dt
+      a.vy = a.vy + a.ay * dt
       a.x = a.x + a.vx * dt
       a.y = a.y + a.vy * dt
     end
@@ -133,45 +147,41 @@ local MAX_DIST = 20000
 
 local function check_escape(bodies, G)
   local n = #bodies
+
+  -- totals over every body once; a body's own share is subtracted to
+  -- get the centre of mass of the others
+  local total_mass, sum_x, sum_y = 0, 0, 0
+  for i = 1, n do
+    local b = bodies[i]
+    if b.alive then
+      total_mass = total_mass + b.mass
+      sum_x = sum_x + b.x * b.mass
+      sum_y = sum_y + b.y * b.mass
+    end
+  end
+
   for i = 1, n do
     local a = bodies[i]
     if a.alive and not a.fixed and not a.escaped then
-      -- distance from center of mass of all other bodies
-      local total_mass = 0
-      local cmx, cmy = 0, 0
-      for j = 1, n do
-        local b = bodies[j]
-        if j ~= i and b.alive then
-          total_mass = total_mass + b.mass
-          cmx = cmx + b.x * b.mass
-          cmy = cmy + b.y * b.mass
-        end
-      end
-      if total_mass <= 0 then goto continue end
-      cmx = cmx / total_mass
-      cmy = cmy / total_mass
+      local others = total_mass - a.mass
+      if others > 0 then
+        local dx = a.x - (sum_x - a.x * a.mass) / others
+        local dy = a.y - (sum_y - a.y * a.mass) / others
+        local dist = sqrt(dx * dx + dy * dy)
 
-      local dx = a.x - cmx
-      local dy = a.y - cmy
-      local dist = sqrt(dx * dx + dy * dy)
-
-      -- hard cap
-      if dist >= MAX_DIST then
-        a.escaped = true
-        goto continue
-      end
-
-      -- only check escape velocity if off screen
-      if dist > WIDTH then
-        local speed_sq = a.vx * a.vx + a.vy * a.vy
-        local v_esc_sq = 2 * G * total_mass / dist
-        -- also check body is moving away from center of mass
-        local radial_v = (dx * a.vx + dy * a.vy) / dist  -- dot product
-        if speed_sq > v_esc_sq and radial_v > 0 then
+        if dist >= MAX_DIST then
           a.escaped = true
+        elseif dist > WIDTH then
+          -- only check escape velocity if off screen
+          local speed_sq = a.vx * a.vx + a.vy * a.vy
+          local v_esc_sq = 2 * G * others / dist
+          -- also check body is moving away from center of mass
+          local radial_v = (dx * a.vx + dy * a.vy) / dist
+          if speed_sq > v_esc_sq and radial_v > 0 then
+            a.escaped = true
+          end
         end
       end
-      ::continue::
     end
   end
 end
@@ -261,8 +271,8 @@ local function handle_collisions(bodies)
         if b.alive then
           local dx = b.x - a.x
           local dy = b.y - a.y
-          local dist = sqrt(dx * dx + dy * dy)
-          if dist < a.radius + b.radius + 1 then
+          local reach = a.radius + b.radius + 1
+          if dx * dx + dy * dy < reach * reach then
             -- merge b into a (conserve momentum)
             local total = a.mass + b.mass
             if not a.fixed then
@@ -295,16 +305,11 @@ end
 -- Render
 ----------------------------------------------------------------------
 local function render(bodies, conf, paused, ticks)
-  -- count alive bodies
   local alive = 0
-  for i = 1, #bodies do
-    if bodies[i].alive then alive = alive + 1 end
-  end
-
-  -- draw bodies
   for i = 1, #bodies do
     local b = bodies[i]
     if b.alive then
+      alive = alive + 1
       if on_screen(b) then
         local px = floor(b.x + 0.5)
         local py = floor(b.y + 0.5)
@@ -316,13 +321,9 @@ local function render(bodies, conf, paused, ticks)
   end
 
   -- HUD
-  local fmem = floor(collectgarbage("count"))
-  local status = "dt=" .. string.format("%.2f", conf.dt)
-    .. " n=" .. alive
-    .. " t=" .. ticks
-    .. " mem=" .. fmem .. "k"
-  if paused then status = status .. " [PAUSED]" end
-  if conf.trail then status = status .. " [TRAIL]" end
+  local status = ("dt=%.2f n=%d t=%d mem=%dk%s%s"):format(
+    conf.dt, alive, ticks, floor(collectgarbage("count")),
+    paused and " [PAUSED]" or "", conf.trail and " [TRAIL]" or "")
   draw.text(2, 2, status, hud_fg, hud_bg)
   draw.text(2, 12, "+/- speed  spc=pause  t=trail  r=reset  q=quit",
     colors.cyan, hud_bg)
@@ -383,7 +384,7 @@ local function main()
   while running do
     -- frame timing: wait for next frame
     local now = os.clock()
-    if now >= last_frame + FRAME_MS then
+    if now >= last_frame + FRAME_SECS then
       last_frame = now
 
       -- the keyboard queues a hold and a release after every press, so
@@ -411,7 +412,8 @@ local function main()
       end
       render(bodies, conf, paused, ticks)
       draw.blitBuffer()
-      collectgarbage()
+      -- a frame makes a few short strings, not enough to justify a full collection
+      collectgarbage("step")
     end
   end
 
