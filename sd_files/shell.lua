@@ -377,8 +377,25 @@ function shell:parse_input(input)
   return cmd, args
 end
 
--- print directory listing
-function shell:print_dir(entries)
+-- file size in at most six characters: bytes, then decimal M or G
+function shell:short_size(size)
+  if size < 1000000 then
+    return tostring(size)
+  end
+  local value, unit = size / 1e6, "M"
+  if size >= 1e9 then
+    value, unit = size / 1e9, "G"
+  end
+  local s = string.format("%.2f%s", value, unit)
+  if #s > 6 then s = string.format("%.1f%s", value, unit) end
+  if #s > 6 then s = string.format("%.0f%s", value, unit) end
+  return s
+end
+
+-- print directory listing: one entry per line with byte sizes when long
+-- is set, otherwise compact sizes and two columns once the listing
+-- would not fit the screen
+function shell:print_dir(entries, long)
   if not entries or #entries == 0 then
     term.write("  (empty)\n")
     return
@@ -392,30 +409,54 @@ function shell:print_dir(entries)
     return a.name:lower() < b.name:lower()
   end)
   
-  term.setCursorBlink(false)      
-  for _, entry in ipairs(entries) do
-    local cx, cy = term.getCursorPos()
-    cy = cy + 1  
+  if long then
+    for _, entry in ipairs(entries) do
+      if entry.isDir then
+        term.write("  --Dir--  " .. c.yellow .. entry.name .. "/" .. c.white .. "\n")
+      else
+        term.write(string.format("%9d  %s\n", entry.size, entry.name))
+      end
+    end
+    term.write("\n")
+    return
+  end
+
+  -- a cell per entry: six-character size, a space, the name; width is
+  -- the visible length since directory names carry colour codes
+  local cells = {}
+  for i, entry in ipairs(entries) do
+    local text, shown
     if entry.isDir then
-      term.write("  --Dir-- " )
-      term.setCursorPos(cx + 12, cy)
-      term.write(c.yellow .. entry.name .. "/".. c.white .. "\n")
+      shown = entry.name .. "/"
+      text = string.format("%6s ", "<dir>") .. c.yellow .. shown .. c.white
     else
-      local size_str = self:format_size(entry.size)
-      local entry_size = tostring(entry.size)
-      local cx_offset = cx + (10 - #entry_size)
-      term.setCursorPos(cx_offset, cy)
-      term.write(entry_size)
-      term.setCursorPos(cx + 12, cy)
-      --term.write(c.green .. size_str .. c.white)
-      --term.setCursorPos(cx + 22, cy)
-      term.write(entry.name .. "\n")
+      shown = entry.name
+      text = string.format("%6s %s", self:short_size(entry.size), shown)
+    end
+    cells[i] = { text = text, width = 7 + #shown }
+  end
+
+  local width, height = term.getSize()
+  -- header, listing and the trailing blank line against the rows
+  -- the pager can show
+  local two_columns = #cells + 4 > height - 1
+  -- the pager indents by one column, so the grid is one narrower
+  local cell_width = (width - 1) // 2
+
+  -- entries are paired left to right; one too wide for a cell takes a
+  -- row of its own and the pairing resumes after it
+  local i = 1
+  while i <= #cells do
+    local a, b = cells[i], cells[i + 1]
+    if two_columns and a.width < cell_width and b and b.width < cell_width then
+      term.write(a.text .. string.rep(" ", cell_width - a.width) .. b.text .. "\n")
+      i = i + 2
+    else
+      term.write(a.text .. "\n")
+      i = i + 1
     end
   end
   term.write("\n")
-  --term.write(c.green.."-----------------------------------"..c.white.."\n")
-  term.setCursorBlink(true)
-      
 end
 
 -- format file size
@@ -1050,14 +1091,17 @@ local builtin_commands = {
     name = "ls",
     aliases = {"dir", "list"},
     category = "core",
-    usage = "[dir]",
+    usage = "[-l] [dir]",
     desc = "list directory contents",
+    long = "Two columns when the listing would not fit the screen; -l lists one entry per line with sizes in bytes",
+    flags = "l",
     args = "dir?=.",
+    pager = true,
     run = function(args, sh)
       term.write(c.green.."-----------------------------------"..c.white.."\n")
       term.write(c.green.." " .. args.abs[1] ..c.white..":\n")
       term.write("\n")
-      sh:print_dir(fs.list(args.v[1]))
+      sh:print_dir(fs.list(args.v[1]), args.flags.l)
     end
   },
 
