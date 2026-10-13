@@ -19,6 +19,8 @@
 #include "../drivers/lcd.h"
 #include "../corelua.h"
 
+extern const char* GIT_DESC;
+
 static int callback_reference = 0;
 static repeating_timer_t sys_timer;
 
@@ -240,6 +242,9 @@ int luaopen_sys(lua_State *L) {
 
 	lua_pushstring(L, PICO_BOARD);
 	lua_setfield(L, -2, "board");
+
+	lua_pushstring(L, GIT_DESC);
+	lua_setfield(L, -2, "version");
 
 #ifdef PICOCALC_HAS_WIFI
 	lua_pushboolean(L, 1);

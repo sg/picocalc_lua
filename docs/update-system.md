@@ -15,7 +15,7 @@ update                 -- download and install
 
 - Wi-Fi connection (`wifi on`)
 - A config file at `/lua/shell/update_config.lua`
-- A `/version.txt` file on the SD card (created automatically after first update)
+- A `/version.txt` file on the SD card (shipped in the SD archive and rewritten after each update)
 - Releases published on the configured git forge with tagged versions
 
 ## Configuration
@@ -36,8 +36,8 @@ return {
   owner = "your-username",
   repo = "picocalc_lua",
   download_base = "https://github.com/your-username/picocalc_lua/releases/download",
-  sd_asset = "sd_files.tar.gz",
-  uf2_asset = "picolua-{board}.uf2",
+  sd_asset = "sd_files-{tag}.tar.gz",
+  uf2_asset = "picolua-{board}-{tag}.uf2",
 }
 ```
 
@@ -50,8 +50,8 @@ return {
 | `owner` | Repository owner (username or organization) |
 | `repo` | Repository name |
 | `download_base` | Base URL for downloading release assets. For GitHub this is `https://github.com/owner/repo/releases/download`. For Forgejo/Gitea: `https://your-instance.com/owner/repo/releases/download` |
-| `sd_asset` | Filename of the SD card files archive in the release |
-| `uf2_asset` | Filename pattern for firmware. `{board}` is replaced with `sys.board` at runtime (e.g. `pico2_w`, `pico_w`, `pimoroni_pico_plus2_w_rp2350`) |
+| `sd_asset` | Filename pattern for the SD card files archive. `{tag}` is replaced with the release tag |
+| `uf2_asset` | Filename pattern for firmware. `{tag}` is replaced with the release tag and `{board}` with the short board name `build.sh` uses (`pico`, `picow`, `pico2`, `pico2w`, `pim2w`), derived from `sys.board` |
 
 ## Commands
 
@@ -106,7 +106,7 @@ If the backup fails, the updater warns and asks whether to continue without a ba
 
 ### SD Card File Update
 
-The SD card files archive (e.g. `sd_files.tar.gz`) is downloaded to a temporary file at the root of the SD card, then extracted in place. The tar extractor prompts before overwriting existing files -- type `a` at the first prompt to accept all overwrites.
+The SD card files archive (e.g. `sd_files-v0.2.0.tar.gz`) is downloaded to a temporary file at the root of the SD card, then extracted in place. The tar extractor prompts before overwriting existing files -- type `a` at the first prompt to accept all overwrites.
 
 After extraction the temp file is deleted and `/version.txt` is updated to the new version.
 
@@ -119,7 +119,7 @@ Firmware `.uf2` files are downloaded to the uf2-loader application directory:
 | `pico`, `pico_w` (RP2040) | `/pico1-apps/` |
 | `pico2`, `pico2_w`, `pimoroni_pico_plus2_w_rp2350` (RP2350) | `/pico2-apps/` |
 
-The board type is detected automatically from `sys.board`. The `{board}` placeholder in the `uf2_asset` config field is replaced with the actual board name to download the correct firmware variant.
+The board type is detected automatically from `sys.board` and mapped to the short name `build.sh` uses, which replaces the `{board}` placeholder in the `uf2_asset` config field so the correct firmware variant is downloaded.
 
 To install the firmware after downloading:
 
@@ -133,13 +133,14 @@ To install the firmware after downloading:
 [/:> update
 Checking https://api.github.com/repos/seclorum/picocalc_lua/tags?per_page=1
 Current version: v0.1.0
+       Firmware: v0.1.0
  Latest version: v0.2.0
 
 Update available!
 
 Available:
-  1. SD card files (sd_files.tar.gz)
-  2. Firmware for pico2_w (picolua-pico2_w.uf2)
+  1. SD card files (sd_files-v0.2.0.tar.gz)
+  2. Firmware for pico2_w (picolua-pico2w-v0.2.0.uf2)
 
 Update SD card files? [Y/n]: y
 Download firmware update? [y/N]: y
@@ -153,7 +154,7 @@ Backing up to /backup/backup-v0.1.0.tar...
 Created archive: 42 entries
 Backup created: /backup/backup-v0.1.0.tar
 
-Downloading sd_files.tar.gz...
+Downloading sd_files-v0.2.0.tar.gz...
 Downloaded 48.2k
 
 Extracting update...
@@ -166,8 +167,8 @@ Tip: type 'a' at the overwrite prompt to accept all
   ...
 Extracted 35 entries
 
-Downloading picolua-pico2_w.uf2...
-Firmware saved to /pico2-apps/picolua-pico2_w.uf2 (512.0k)
+Downloading picolua-pico2w-v0.2.0.uf2...
+Firmware saved to /pico2-apps/picolua-pico2w-v0.2.0.uf2 (512.0k)
 
 Update complete!
 SD files updated to v0.2.0
@@ -175,37 +176,34 @@ Run reload to reload shell commands.
 
 To install firmware:
   1. Reboot while holding Up Arrow to enter uf2-loader
-  2. Select picolua-pico2_w.uf2 from /pico2-apps/
+  2. Select picolua-pico2w-v0.2.0.uf2 from /pico2-apps/
 ```
 
 ## Publishing Releases
 
-To make updates available to users, publish a release on your git forge with:
+Pushing a `vX.Y.Z` tag runs the release workflow described in
+`release-workflow.md`, which builds every board and stages a draft release
+holding exactly the assets the updater expects:
 
-1. A semver git tag (e.g. `v0.2.0`)
-2. An `sd_files.tar.gz` archive containing the SD card file tree
-3. Board-specific `.uf2` firmware files named `picolua-{board}.uf2`
+| `sys.board` | Firmware asset |
+|---|---|
+| `pico` | `picolua-pico-v0.2.0.uf2` |
+| `pico_w` | `picolua-picow-v0.2.0.uf2` |
+| `pico2` | `picolua-pico2-v0.2.0.uf2` |
+| `pico2_w` | `picolua-pico2w-v0.2.0.uf2` |
+| `pimoroni_pico_plus2_w_rp2350` | `picolua-pim2w-v0.2.0.uf2` |
 
-### Creating the SD Files Archive
+plus `sd_files-v0.2.0.tar.gz`, made by `make-sd-archive.sh`, which carries a
+`version.txt` so a card installed from it reports its version. Devices see
+the tag as soon as it is pushed, so publish the draft promptly or the update
+command will report a version it cannot download yet.
 
-From the project root:
+To build the same assets by hand:
 
 ```bash
-cd sd_files
-tar czf ../sd_files.tar.gz .
+./build.sh all v0.2.0
+VERSION=v0.2.0 ./make-sd-archive.sh sd_files-v0.2.0.tar.gz
 ```
-
-Or if your release only includes changed files, create a tar.gz of just those files, preserving the directory structure relative to the SD card root.
-
-### Naming Firmware Files
-
-Each board variant gets its own `.uf2` file. The naming convention must match the `uf2_asset` pattern in the config. With the default pattern `picolua-{board}.uf2`, the assets would be:
-
-| Board | Filename |
-|---|---|
-| `pico_w` | `picolua-pico_w.uf2` |
-| `pico2_w` | `picolua-pico2_w.uf2` |
-| `pimoroni_pico_plus2_w_rp2350` | `picolua-pimoroni_pico_plus2_w_rp2350.uf2` |
 
 ### Version Tagging
 
@@ -216,7 +214,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-Then create a release on the forge attached to that tag and upload the assets.
+The release workflow then stages a draft release with the assets; publish it from the Releases page.
 
 ## Troubleshooting
 

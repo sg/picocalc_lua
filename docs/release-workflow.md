@@ -114,6 +114,12 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
+The tag is the only place the version lives. `version.cmake` embeds the
+output of `git describe` in the boot banner and `sys.version`, `build.sh`
+uses it as the UF2 suffix when no version is given, and
+`make-sd-archive.sh` writes it to the archive's `version.txt`, so bumping
+the version is just choosing the next `vX.Y.Z` tag.
+
 The run appears under the repository's Actions tab. When it finishes, the
 Releases page lists a draft `v0.1.0` with the five UF2 files,
 `sd_files-v0.1.0.tar.gz` and `SHA256SUMS.txt`. Edit the notes if needed and

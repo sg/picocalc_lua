@@ -6,7 +6,10 @@ DEPLOY=${DEPLOY:-/home/steve/dev/picocalc/uf2-deploy}
 PICO_SDK_PATH=${PICO_SDK_PATH:-/home/steve/dev/picocalc/pico-sdk}
 
 usage() {
-    echo "Usage: $0 <board|all> [build_num]"
+    echo "Usage: $0 <board|all> [version]"
+    echo ""
+    echo "The version is used as the uf2 filename suffix and defaults"
+    echo "to the output of git describe."
     echo ""
     echo "Boards:"
     echo "  pico    - Raspberry Pi Pico (RP2040, no WiFi)"
@@ -89,7 +92,8 @@ if [ $# -lt 1 ]; then
 fi
 
 BOARD="$1"
-BUILD_NUM="$2"
+# CI passes the release tag, so local builds get the same style of name
+BUILD_NUM=${2:-$(git describe --tags --always --dirty=+ 2>/dev/null)}
 
 if [ "$BOARD" = "all" ]; then
     for b in $ALL_BOARDS; do

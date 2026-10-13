@@ -4,6 +4,9 @@
 #
 #   ./make-sd-archive.sh [output]     default: $DEPLOY/sd_files.tar.gz
 #
+# A version.txt holding $VERSION (default: git describe) is added so
+# the update command on the device knows what it is running.
+#
 # Members come from git (tracked plus untracked-but-not-ignored files
 # under sd_files/), so credentials, history, screenshots and logs that
 # .gitignore lists never reach the archive. Per-device settings listed
@@ -24,9 +27,12 @@ SRC=$(cd "$(dirname "$0")/sd_files" && pwd)
 
 LOCAL_CONFIGS="lua/picolua.conf lua/wx.conf lua/shell/update_config.lua"
 SECRETS="lua/wifi.conf"
+VERSION=${VERSION:-$(git -C "$SRC" describe --tags --always --dirty=+ 2>/dev/null || echo unknown)}
 
 list=$(mktemp)
-trap 'rm -f "$list"' EXIT
+stage=$(mktemp -d)
+trap 'rm -rf "$list" "$stage"' EXIT
+printf '%s\n' "$VERSION" > "$stage/version.txt"
 
 git -C "$SRC" ls-files -co --exclude-standard | sort > "$list"
 
@@ -49,7 +55,7 @@ esac
 
 mkdir -p "$(dirname "$OUT")"
 tar --format=ustar --owner=0 --group=0 --numeric-owner \
-    -C "$SRC" -c $compress -f "$OUT" -T "$list"
+    -c $compress -f "$OUT" -C "$SRC" -T "$list" -C "$stage" version.txt
 
 if [ -n "$compress" ]; then
     gzip -t "$OUT"
@@ -63,7 +69,7 @@ for f in $SECRETS; do
     fi
 done
 
-echo "$(wc -l < "$list") files, $(wc -c < "$OUT") bytes: $OUT"
+echo "$(wc -l < "$list") files plus version.txt ($VERSION), $(wc -c < "$OUT") bytes: $OUT"
 if [ -n "$VERBOSE" ]; then
     cat "$list"
 fi

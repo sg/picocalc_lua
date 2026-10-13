@@ -1516,6 +1516,7 @@ local function main()
   -- welcome message
   term.write("\n")
   term.write(c.green .. "PicoCalc Lua Shell" .. c.white .. " -- " .. c.blue .. _VERSION .. c.white .. "\n")
+  term.write("Firmware " .. c.blue .. (sys.version or "unknown") .. c.white .. "\n")
   term.write("Type '" .. c.cyan .. "help" .. c.white .. "' for commands\n")
   collectgarbage()
 

@@ -34,10 +34,10 @@ local DEFAULT_CONFIG = {
   -- download base URL for release assets
   -- (may differ from API host, e.g. github.com vs api.github.com)
   download_base = "http://192.168.27.9:3000/steve/picocalc_lua/releases/download",
-  -- filename patterns for release assets
-  sd_asset = "sd_files.tar.gz",
-  -- uf2 asset pattern: {board} is replaced with sys.board
-  uf2_asset = "picolua-{board}.uf2",
+  -- release asset patterns: {tag} is the release tag and {board}
+  -- the short board name build.sh uses, derived from sys.board
+  sd_asset = "sd_files-{tag}.tar.gz",
+  uf2_asset = "picolua-{board}-{tag}.uf2",
 }
 
 ------------------------------------------------------------
@@ -105,10 +105,19 @@ local function uf2_dir()
   return "pico1-apps"
 end
 
--- determine uf2 filename from config and board
-local function uf2_filename(cfg)
+-- build.sh names firmware by these short names, not the SDK board names
+local BOARD_NAMES = {
+  pico = "pico",
+  pico_w = "picow",
+  pico2 = "pico2",
+  pico2_w = "pico2w",
+  pimoroni_pico_plus2_w_rp2350 = "pim2w",
+}
+
+local function asset_name(pattern, tag)
   local board = sys.board or "unknown"
-  return cfg.uf2_asset:gsub("{board}", board)
+  board = BOARD_NAMES[board] or board
+  return (pattern:gsub("{board}", board):gsub("{tag}", tag))
 end
 
 -- simple semver comparison: returns true if a > b
@@ -298,6 +307,8 @@ local function do_update(args, sh)
   local current_display = current or "(none)"
   term.write(c.cyan .. "Current version: " .. c.white
     .. current_display .. "\n")
+  term.write(c.cyan .. "       Firmware: " .. c.white
+    .. (sys.version or "unknown") .. "\n")
 
   -- fetch latest tag
   local latest, err = fetch_latest_tag(cfg, sh)
@@ -326,13 +337,14 @@ local function do_update(args, sh)
   term.write(c.green .. "Update available!" .. c.white .. "\n\n")
 
   -- determine what's available
-  local sd_url = asset_url(cfg, latest, cfg.sd_asset)
-  local fw_name = uf2_filename(cfg)
+  local sd_name = asset_name(cfg.sd_asset, latest)
+  local sd_url = asset_url(cfg, latest, sd_name)
+  local fw_name = asset_name(cfg.uf2_asset, latest)
   local fw_url = asset_url(cfg, latest, fw_name)
   local fw_dir = uf2_dir()
 
   term.write("Available:\n")
-  term.write("  1. SD card files (" .. cfg.sd_asset .. ")\n")
+  term.write("  1. SD card files (" .. sd_name .. ")\n")
   if sys.board then
     term.write("  2. Firmware for " .. sys.board
       .. " (" .. fw_name .. ")\n")
@@ -375,7 +387,7 @@ local function do_update(args, sh)
   -- download and install SD files
   if do_sd then
     local tmp_archive = "tmp_update.tar.gz"  -- fs path (no leading /)
-    term.write("Downloading " .. cfg.sd_asset .. "...\n")
+    term.write("Downloading " .. sd_name .. "...\n")
 
     local bytes, dl_err = download_file(sd_url, tmp_archive, sh)
     if not bytes then
@@ -456,8 +468,8 @@ local function show_config(sh)
     term.write('  owner = "YOUR_USERNAME",\n')
     term.write('  repo = "picocalc_lua",\n')
     term.write('  download_base = "https://github.com/YOUR_USERNAME/picocalc_lua/releases/download",\n')
-    term.write('  sd_asset = "sd_files.tar.gz",\n')
-    term.write('  uf2_asset = "picolua-{board}.uf2",\n')
+    term.write('  sd_asset = "sd_files-{tag}.tar.gz",\n')
+    term.write('  uf2_asset = "picolua-{board}-{tag}.uf2",\n')
     term.write("}" .. c.white .. "\n")
   end
 end
