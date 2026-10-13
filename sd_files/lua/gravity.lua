@@ -28,6 +28,9 @@ local rad = math.rad
 local floor = math.floor
 local abs = math.abs
 
+local PRESSED = keys.states.pressed
+local IDLE = keys.states.idle
+
 local bg = colors.black
 local hud_fg = colors.white
 local hud_bg = colors.black
@@ -322,7 +325,7 @@ local function render(bodies, conf, paused, ticks)
   if conf.trail then status = status .. " [TRAIL]" end
   draw.text(2, 2, status, hud_fg, hud_bg)
   draw.text(2, 12, "+/- speed  spc=pause  t=trail  r=reset  q=quit",
-    colors.gray, hud_bg)
+    colors.cyan, hud_bg)
 end
 
 ----------------------------------------------------------------------
@@ -351,36 +354,46 @@ local function main()
   draw.blitBuffer()
 
   local last_frame = os.clock()
+  local running = true
 
-  while true do
+  local function on_key(code)
+    if code == "q" or code == "Q" or code == keys.esc then
+      running = false
+    elseif code == " " then
+      paused = not paused
+    elseif code == "t" or code == "T" then
+      conf.trail = not conf.trail
+    elseif code == "r" or code == "R" then
+      local new_conf = load_config()
+      if new_conf then
+        conf = new_conf
+        bodies = init_bodies(conf)
+        ticks = 0
+        paused = false
+      end
+    elseif code == "+" or code == "=" or code == keys.up then
+      conf.dt = conf.dt * 1.25
+      if conf.dt > 10.0 then conf.dt = 10.0 end
+    elseif code == "-" or code == "_" or code == keys.down then
+      conf.dt = conf.dt * 0.8
+      if conf.dt < 0.01 then conf.dt = 0.01 end
+    end
+  end
+
+  while running do
     -- frame timing: wait for next frame
     local now = os.clock()
     if now >= last_frame + FRAME_MS then
       last_frame = now
 
-      -- input: single poll per frame
-      local state, mods, code = keys.poll()
-      if code == "q" or code == "Q" or code == keys.esc then
-        break
-      elseif code == " " then
-        paused = not paused
-      elseif code == "t" or code == "T" then
-        conf.trail = not conf.trail
-      elseif code == "r" or code == "R" then
-        local new_conf = load_config()
-        if new_conf then
-          conf = new_conf
-          bodies = init_bodies(conf)
-          ticks = 0
-          paused = false
-        end
-      elseif code == "+" or code == "=" or code == keys.up then
-        conf.dt = conf.dt * 1.25
-        if conf.dt > 10.0 then conf.dt = 10.0 end
-      elseif code == "-" or code == "_" or code == keys.down then
-        conf.dt = conf.dt * 0.8
-        if conf.dt < 0.01 then conf.dt = 0.01 end
+      -- the keyboard queues a hold and a release after every press, so
+      -- only the press may act or one keystroke toggles several times
+      local state, _, code = keys.poll()
+      while state ~= IDLE do
+        if state == PRESSED then on_key(code) end
+        state, _, code = keys.poll()
       end
+      if not running then break end
 
       -- physics
       if not paused then
@@ -410,8 +423,11 @@ local function main()
 end
 
 -- Run with error protection so buffer mode is always restored
+local cursor_blink = term.getCursorBlink()
+term.setCursorBlink(false)
 local ok, err = pcall(main)
 draw.enableBuffer(0)  -- always restore direct mode
+term.setCursorBlink(cursor_blink)
 if not ok then
   draw.clear()
   term.clear()
