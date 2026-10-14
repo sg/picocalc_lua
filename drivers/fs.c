@@ -15,6 +15,8 @@ volatile atomic_bool fs_needs_remount = false;
 #define SD_CS     17
 #define SD_SCK    18
 #define SD_DETECT 22
+// SPI-mode cards are only guaranteed 25 MHz; the 50 MHz default ran RP2350 boards at 37.5 MHz
+#define SD_CLK_FAST (25 * MHZ)
 #define DEBOUNCE_US 80 * 1000ull
 
 char* fs_error_strings[20] = {
@@ -70,7 +72,7 @@ void fs_init() {
 	pico_fatfs_spi_config_t config = {
 		.spi_inst = spi0,
 		.clk_slow = CLK_SLOW_DEFAULT,
-		.clk_fast = CLK_FAST_DEFAULT,
+		.clk_fast = SD_CLK_FAST,
 		.pin_miso = SD_MISO,
 		.pin_cs = SD_CS,
 		.pin_sck = SD_SCK,
