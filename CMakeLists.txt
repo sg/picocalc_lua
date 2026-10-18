@@ -4,9 +4,9 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
-set(sdkVersion 2.2.0)
+set(sdkVersion 2.3.1)
 set(toolchainVersion 14_2_Rel1)
-set(picotoolVersion 2.2.0-a4)
+set(picotoolVersion 2.3.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
     include(${picoVscode})
@@ -28,6 +28,8 @@ ADD_CUSTOM_COMMAND(
 					${CMAKE_CURRENT_SOURCE_DIR}/version.cmake)
 
 set(PICO_SDK_FETCH_FROM_GIT on)
+# without a tag the import fetches master, which is not what the release builds use
+set(PICO_SDK_FETCH_FROM_GIT_TAG ${sdkVersion})
 include(pico_sdk_import.cmake)
 
 project(picolua)
@@ -43,6 +45,7 @@ add_subdirectory(picolua-api)
 add_executable(picolua
 	picolua.c
 	corelua.c
+	syscalls.c
 	${CMAKE_CURRENT_BINARY_DIR}/version.c
 	#lua_wrapper.c
 	#fs_wrapper.c

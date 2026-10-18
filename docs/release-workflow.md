@@ -8,12 +8,14 @@ with `build.sh`, packs the SD-card files with `make-sd-archive.sh`, writes
 commit list since the previous tag as notes. Nothing is public until the
 draft is reviewed and published in the Forgejo UI.
 
-The job runs in a plain `ubuntu:24.04` container and installs the same
-`gcc-arm-none-eabi` 13.2 package the development machine uses. It needs
-internet access for the Ubuntu archive, the Pico SDK 2.2.0 clone and the
-picotool fetch the SDK performs. A full run took under four minutes on a
-four-core machine: about a minute for the packages, half a minute for the
-SDK clone and roughly two minutes for the five compiles.
+The job runs in the `picocalc-builder` image, built from `ci/builder` in
+the picocalc-z80 repository: Ubuntu 24.04 with the same
+`gcc-arm-none-eabi` 13.2 package the development machine uses, Pico SDK
+2.3.1 with its submodules and a matching picotool. The image tag is the
+SDK version it carries, so a release is built against the SDK named in
+the workflow. A run only needs network access to clone the tag and
+upload the assets; the five compiles take roughly two minutes on a
+four-core machine.
 
 ## One-time runner setup
 
@@ -156,12 +158,11 @@ for its own board into the uf2-loader directory and the archive into the
 SD root, then prints the install steps. The server defaults to
 `http://192.168.27.164:8080`; a second argument overrides it.
 
-## Faster runs
+## Job image
 
-Two optional changes shorten a run. Building a small image with
-the toolchain preinstalled (a Dockerfile with the `apt-get install` line
-from the workflow) and naming it in the job's `container.image` removes
-the package download. Pointing `container.valid_volumes` in
-`runner/config.yml` at a host directory and mounting it with
-`container.volumes` in the workflow lets a Pico SDK clone persist between
-runs.
+The image is built on the NAS Docker host, where the runner's jobs run,
+with `ci/builder/build-image.sh <sdk-version>` from the picocalc-z80
+repository. Rerun it now and then to pick up Ubuntu updates. After a Pico
+SDK upgrade run it with the new version and change `container.image` in
+the workflow to match; a job that names a tag which has not been built
+fails before its first step.

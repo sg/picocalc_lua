@@ -17,7 +17,7 @@ You can find more credits running `credits()` at the Lua prompt
 sudo apt update
 sudo apt install build-essential gcc-arm-none-eabi git cmake python3
 
-git clone --recurse-submodules https://github.com/raspberrypi/pico-sdk.git
+git clone --recurse-submodules --branch 2.3.1 https://github.com/raspberrypi/pico-sdk.git
 git clone --recurse-submodules https://github.com/Lana-chan/picocalc_lua
 cd picocalc_lua
 ```
