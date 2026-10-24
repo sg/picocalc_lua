@@ -133,6 +133,7 @@ void lua_main() {
 	lua_bootscreen();
 	if (mounted) {
 		printf("\x1b[92mSD card mounted!\x1b[m\n");
+		if (!fs_crc_checked()) printf("\x1b[93mThis card refuses CRC checks, so reads are unchecked\x1b[m\n");
 
 		if (fs_exists(STARTUP_FILE)) {
 			lua_pre_script(L);

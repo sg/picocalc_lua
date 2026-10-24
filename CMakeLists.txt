@@ -36,7 +36,9 @@ project(picolua)
 pico_sdk_init()
 
 add_subdirectory(submodules/lua-5.5.0/src)
-add_subdirectory(submodules/pico_fatfs)
+# FatFs itself from the vendored pico_fatfs, but not its tf_card.c: sdcard/
+# holds a copy that checks the card's CRCs
+add_subdirectory(submodules/pico_fatfs/pio/spi pio_spi)
 add_subdirectory(submodules/rp2040-psram)
 add_subdirectory(submodules/kilo)
 add_subdirectory(drivers)
@@ -47,6 +49,10 @@ add_executable(picolua
 	corelua.c
 	syscalls.c
 	${CMAKE_CURRENT_BINARY_DIR}/version.c
+	sdcard/tf_card.c
+	submodules/pico_fatfs/fatfs/ff.c
+	submodules/pico_fatfs/fatfs/ffsystem.c
+	submodules/pico_fatfs/fatfs/ffunicode.c
 	#lua_wrapper.c
 	#fs_wrapper.c
 	#main.c
@@ -71,7 +77,7 @@ target_link_libraries(picolua
 	pico_multicore
 	lua
 	drivers
-	pico_fatfs
+	pio_spi
 	kilo
 	picolua-api
 )
@@ -104,8 +110,14 @@ target_compile_definitions(picolua PRIVATE
 	PSRAM_PIN_MISO=3
 )
 
-# Include directory for lwipopts.h
-target_include_directories(picolua PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# the project root for lwipopts.h, then FatFs with its local config and the
+# card driver
+target_include_directories(picolua PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}/fatfs_conf
+	${CMAKE_CURRENT_SOURCE_DIR}/sdcard
+	${CMAKE_CURRENT_SOURCE_DIR}/submodules/pico_fatfs/fatfs
+)
 
 pico_add_extra_outputs(picolua)
 

@@ -367,6 +367,10 @@ Checks if a character is an ASCII printable character
 
 # `fs` - Filesystem
 
+Paths and file names are UTF-8, like Lua strings. The SD card can be taken
+out and put back at any time: it is mounted again by the next call that needs
+it, and files left open across the swap have to be opened again.
+
 ## `open(path, mode)`
 Opens a file for usage
 

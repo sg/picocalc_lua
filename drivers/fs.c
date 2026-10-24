@@ -1,14 +1,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "../pico_fatfs/tf_card.h"
+#include "tf_card.h"
 #include "pico/time.h"
 
 #include "fs.h"
 
 static FATFS global_fs;
-static bool mounted = false;
-volatile atomic_bool fs_needs_remount = false;
+static bool card_shown, card_changing;
+static absolute_time_t card_settled_at;
 
 #define SD_MISO   16
 #define SD_MOSI   19
@@ -37,35 +37,15 @@ char* fs_error_strings[20] = {
 	"The f_mkfs() aborted due to any problem",
 	"Could not get a grant to access the volume within defined period",
 	"The operation is rejected according to the file sharing policy",
-	"LFN working buffer could not be allocated",
+	"Not enough memory",
 	"Number of open files > FF_FS_LOCK",
 	"Given parameter is invalid",
 };
 
 static void sd_hotplug(uint gpio, uint32_t events) {
-	// wait debounce_ms and make sure status is still the same, then act accordingly
-	if (gpio == SD_DETECT) {
-		if (events & GPIO_IRQ_EDGE_RISE) {
-			// sd removed
-			busy_wait_us(DEBOUNCE_US);
-			if (gpio_get(SD_DETECT) == 1) {
-				printf("\x1b[91mSD unplugged! ");
-				if (fs_unmount()) {
-					printf("Unmounted!\x1b[m\n");
-				} else {
-					printf("Failed to unmount!\x1b[m\n");
-				}
-			}
-		} else if (events & GPIO_IRQ_EDGE_FALL) {
-			// sd inserted
-			busy_wait_us(DEBOUNCE_US);
-			if (gpio_get(SD_DETECT) == 0) {
-				printf("\x1b[91mSD inserted, mounting...");
-				atomic_store(&fs_needs_remount, true);
-			}
-		}
-		gpio_acknowledge_irq(SD_DETECT, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);
-	}
+	// FatFs belongs to Lua on core 1, so this only has the driver
+	// re-initialise the card, and FatFs remount it, on the next FatFs call
+	if (gpio == SD_DETECT) pico_fatfs_media_changed();
 }
 
 void fs_init() {
@@ -81,17 +61,39 @@ void fs_init() {
 	};
 	pico_fatfs_set_config(&config);
 	gpio_init(SD_DETECT);
+	card_shown = !gpio_get(SD_DETECT);
 	gpio_set_irq_enabled_with_callback(SD_DETECT, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &sd_hotplug);
 }
 
-int fs_mount() {
-	if (!mounted) mounted = f_mount(&global_fs, "", 1) == FR_OK;
-	return mounted;
+// core 0's loop: reports a card coming or going once the switch has held
+// still for DEBOUNCE_US, without touching FatFs
+void fs_poll() {
+	bool in = !gpio_get(SD_DETECT);
+
+	if (in == card_shown) {
+		card_changing = false;
+		return;
+	}
+	if (!card_changing) {
+		card_changing = true;
+		card_settled_at = make_timeout_time_us(DEBOUNCE_US);
+		return;
+	}
+	if (!time_reached(card_settled_at)) return;
+	card_changing = false;
+	card_shown = in;
+	if (in) printf("\x1b[92mSD card inserted\x1b[m\n");
+	else printf("\x1b[91mSD card removed\x1b[m\n");
 }
 
-int fs_unmount() {
-	if (mounted) mounted = !(f_unmount("") == FR_OK);
-	return !mounted;
+int fs_mount() {
+	// global_fs stays registered when this fails, so FatFs mounts a card
+	// inserted later on the first call that needs it
+	return f_mount(&global_fs, "", 1) == FR_OK;
+}
+
+bool fs_crc_checked() {
+	return pico_fatfs_crc_enabled();
 }
 
 int fs_exists(const char* path) {
@@ -102,19 +104,21 @@ int fs_exists(const char* path) {
 
 FRESULT fs_readline(FIL* fp, char** buffer, UINT* read) {
 	FRESULT result;
+	UINT got;
 
 	if (*buffer) {
 		free(*buffer);
 		*buffer = NULL;
 	}
+	*read = 0;
 
 	if (f_eof(fp)) return FR_OK;
 
 	FSIZE_t old_fptr = fp->fptr;
 
-	char c;
+	char c = 0;
 	while (c != '\n' && !f_eof(fp)) {
-		result = f_read(fp, &c, 1, NULL);
+		result = f_read(fp, &c, 1, &got);
 		if (result != FR_OK) return result;
 	}
 	// length of file from old_fptr until newline, minus newline
@@ -122,9 +126,12 @@ FRESULT fs_readline(FIL* fp, char** buffer, UINT* read) {
 	if (c == '\n') to_read--;
 	f_lseek(fp, old_fptr);
 	
-	*buffer = malloc(to_read);
+	// room for a terminator, which also gives an empty line a buffer
+	*buffer = malloc(to_read + 1);
+	if (!*buffer) return FR_NOT_ENOUGH_CORE;
 	result = f_read(fp, *buffer, to_read, read);
 	if (result != FR_OK) return result;
+	(*buffer)[*read] = '\0';
 
 	// skip that newline
 	if (c == '\n') f_lseek(fp, fp->fptr + 1);

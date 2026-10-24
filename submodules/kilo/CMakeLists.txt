@@ -14,7 +14,7 @@ target_include_directories(kilo
     PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}
     ../pico_fatfs/fatfs
-    ../pico_fatfs/fatfs/conf
+    ../../fatfs_conf
     ../../drivers
     ../lua-5.4.8
     ../../

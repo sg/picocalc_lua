@@ -33,14 +33,7 @@ int main() {
 	multicore_launch_core1(lua_main);
 
 	while (true) {
-		if (atomic_load(&fs_needs_remount) == true) {
-			if (fs_mount()) {
-				printf("\x1b[92mOK!\x1b[m\n");
-			} else {
-				printf("Failed to mount!\x1b[m\n");
-			}
-			atomic_store(&fs_needs_remount, false);
-		}
+		fs_poll();
 
 #ifdef PICOCALC_HAS_WIFI
 		// process wi-fi background tasks

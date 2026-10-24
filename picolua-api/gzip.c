@@ -6,7 +6,7 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-#include "../pico_fatfs/fatfs/ff.h"
+#include "ff.h"
 #include "uzlib.h"
 
 #define GZIP_READER    "GzipReader"

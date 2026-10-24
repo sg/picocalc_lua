@@ -5,8 +5,7 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-#include "../pico_fatfs/tf_card.h"
-#include "../pico_fatfs/fatfs/ff.h"
+#include "ff.h"
 
 #include "../drivers/fs.h"
 

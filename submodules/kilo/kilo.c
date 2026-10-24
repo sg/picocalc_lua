@@ -796,7 +796,8 @@ void editorOpen(const char *filename) {
 		char *line = NULL;
 		UINT len;
 		while(!f_eof(&fp)) {
-			fs_readline(&fp, &line, &len);
+			// a read error leaves the file position where it was
+			if (fs_readline(&fp, &line, &len) != FR_OK) break;
 			editorInsertRow(E.numrows,line,len);
 		}
 		free(line);
