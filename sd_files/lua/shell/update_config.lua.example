@@ -7,9 +7,9 @@
   a file holding just "return {}" is enough when the defaults
   already fit.
 
-  Supported platforms: "github", "forgejo", "gitea". For GitHub
-  use host = "https://api.github.com" and download_base =
-  "https://github.com/<owner>/<repo>/releases/download".
+  Supported platforms: "github", "forgejo", "gitea". For a Forgejo
+  or Gitea instance use host = "https://your-instance" and
+  download_base = "https://your-instance/<owner>/<repo>/releases/download".
 
   In the asset patterns {tag} is replaced with the release tag
   and {board} with the short board name build.sh uses (pico,
@@ -18,11 +18,11 @@
 ]]
 
 return {
-  platform = "forgejo",
-  host = "http://192.168.27.9:3000",
-  owner = "steve",
+  platform = "github",
+  host = "https://api.github.com",
+  owner = "sg",
   repo = "picocalc_lua",
-  download_base = "http://192.168.27.9:3000/steve/picocalc_lua/releases/download",
+  download_base = "https://github.com/sg/picocalc_lua/releases/download",
   sd_asset = "sd_files-{tag}.tar.gz",
   uf2_asset = "picolua-{board}-{tag}.uf2",
 }

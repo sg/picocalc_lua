@@ -19,7 +19,7 @@ update                 -- download and install
 
 ## Configuration
 
-The built-in defaults point at the Forgejo repository this tree is published from. To change any of them, copy the example config and edit it. Every key is optional and a key left out keeps its default:
+The built-in defaults point at the GitHub repository this tree is published from. To change any of them, copy the example config and edit it. Every key is optional and a key left out keeps its default:
 
 ```
 cp /lua/shell/update_config.lua.example /lua/shell/update_config.lua

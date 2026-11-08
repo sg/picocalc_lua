@@ -1,6 +1,6 @@
 # PicoCalc Lua Getting Started
 
-You can download the the latest binary releases from [here](https://github.com/Lana-chan/picocalc_lua/releases/latest). The binaries are tagged 2040 for RP2040-based boards (Pico 1) and 2350 for RP2350-based boards (Pico 2).
+You can download the latest binary releases from [here](https://github.com/sg/picocalc_lua/releases/latest). The firmware files are named after the board: `picolua-pico` and `picolua-picow` for RP2040 boards (Pico, Pico W), and `picolua-pico2`, `picolua-pico2w` and `picolua-pim2w` for RP2350 boards (Pico 2, Pico 2 W, Pimoroni Pico Plus 2 W).
 
 To flash an UF2 firmware to your Pico board, connect a USB cable to it while holding down the BOOTSEL button on it. The BOOTSEL button should be accessible through the grill slots on the back of the PicoCalc. Done correctly, the Pico should show up to your computer as a removable drive where you can simply copy the appropriate UF2 file to.
 

@@ -27,15 +27,15 @@ local c = require("lua/modules/simple-colors")
 ------------------------------------------------------------
 local DEFAULT_CONFIG = {
   -- "github", "forgejo", or "gitea"
-  platform = "forgejo",
+  platform = "github",
   -- API host (include https://)
-  host = "http://192.168.27.9:3000",
+  host = "https://api.github.com",
   -- repository owner and name
-  owner = "steve",
+  owner = "sg",
   repo = "picocalc_lua",
   -- download base URL for release assets
   -- (may differ from API host, e.g. github.com vs api.github.com)
-  download_base = "http://192.168.27.9:3000/steve/picocalc_lua/releases/download",
+  download_base = "https://github.com/sg/picocalc_lua/releases/download",
   -- release asset patterns: {tag} is the release tag and {board}
   -- the short board name build.sh uses, derived from sys.board
   sd_asset = "sd_files-{tag}.tar.gz",
