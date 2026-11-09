@@ -69,11 +69,12 @@ jobs:
           (cd dist && sha256sum -- *.uf2 *.tar.gz > SHA256SUMS.txt)
 
           # the first release lists everything
-          prev=$(git -C src describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          prev=$(git -C src describe --tags --abbrev=0 --first-parent "$TAG^" 2>/dev/null || true)
           {
             echo "Changes since ${prev:-the first commit}:"
             echo
-            git -C src log --format='- %s' "${prev:+$prev..}$TAG"
+            # first-parent keeps the fork's merged-in upstream history out of the notes
+            git -C src log --first-parent --format='- %s' "${prev:+$prev..}$TAG"
           } > notes.md
 
           flags=
