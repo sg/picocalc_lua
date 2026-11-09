@@ -25,6 +25,12 @@ _Static_assert(TLS_RECV_BUF_SIZE >= TCP_WND, "the TLS receive buffer must hold a
 static struct altcp_tls_config* g_tls_config = NULL;
 static int g_tls_init_count = 0;
 
+// one static slot: the lwIP heap holds a single mbedtls session anyway, and
+// taking the 18 KB buffer from the C heap failed once the updater had
+// fragmented it unpacking an archive
+static tls_socket_t tls_slot;
+static bool tls_slot_used = false;
+
 // copy data to circular buffer
 static size_t tls_recv_buf_write(tls_socket_t* sock, const uint8_t* data, size_t len) {
     size_t written = 0;
@@ -172,17 +178,19 @@ tls_socket_t* tls_socket_create(void) {
         }
     }
 
-    tls_socket_t* sock = calloc(1, sizeof(tls_socket_t));
-    if (sock == NULL) {
+    if (tls_slot_used) {
         return NULL;
     }
+    tls_socket_t* sock = &tls_slot;
+    memset(sock, 0, sizeof(*sock));
+    tls_slot_used = true;
 
     cyw43_arch_lwip_begin();
     sock->pcb = altcp_tls_new(g_tls_config, IPADDR_TYPE_V4);
     cyw43_arch_lwip_end();
 
     if (sock->pcb == NULL) {
-        free(sock);
+        tls_slot_used = false;
         return NULL;
     }
 
@@ -226,7 +234,7 @@ void tls_socket_close(tls_socket_t* sock) {
     }
     cyw43_arch_lwip_end();
 
-    free(sock);
+    tls_slot_used = false;
 }
 
 int tls_socket_connect(tls_socket_t* sock, const char* host, uint16_t port, uint32_t timeout_ms) {
