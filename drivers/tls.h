@@ -20,8 +20,9 @@
 #define TLS_ERR_DNS         -8
 #define TLS_ERR_WOULDBLOCK  -11
 
-// receive buffer size
-#define TLS_RECV_BUF_SIZE   16382
+// must hold a whole TCP window: received bytes are only acknowledged once
+// read, so the window is what stops the peer when the reader lags
+#define TLS_RECV_BUF_SIZE   18432
 
 // forward declarations
 struct altcp_pcb;

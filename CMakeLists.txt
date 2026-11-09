@@ -90,6 +90,11 @@ if(PICO_CYW43_SUPPORTED)
 		pico_mbedtls
 	)
 	target_compile_definitions(picolua PRIVATE PICOCALC_HAS_WIFI=1)
+	# the Pico W's 264 KB cannot spare the 64 KB lwIP heap and the doubled
+	# pbuf pool the RP2350 boards give TLS (see lwipopts.h, mbedtls_config.h)
+	if(PICO_PLATFORM STREQUAL "rp2040")
+		target_compile_definitions(picolua PRIVATE PICOCALC_SMALL_RAM=1)
+	endif()
 else()
 	message(STATUS "WiFi support disabled")
 endif()

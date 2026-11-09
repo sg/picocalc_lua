@@ -16,10 +16,18 @@
 // platform
 #define MBEDTLS_PLATFORM_C
 #define MBEDTLS_PLATFORM_MS_TIME_ALT
+#if !PICOCALC_SMALL_RAM
+// mbedtls runs inside lwIP's callbacks, in an interrupt on core 0, where the
+// SDK's malloc mutex must not be taken: with this set, lwIP's altcp layer
+// points mbedtls at lwIP's own heap instead, sized for it in lwipopts.h
+#define MBEDTLS_PLATFORM_MEMORY
+#endif
 
-// memory optimization
-#define MBEDTLS_SSL_OUT_CONTENT_LEN     2048
-#define MBEDTLS_SSL_IN_CONTENT_LEN      8192
+// incoming records stay at the protocol's 16 KB, since servers such as
+// GitHub's release host send full-size records whatever the client asks;
+// outgoing must hold a whole request because lwIP's altcp layer cannot split
+// a write across records
+#define MBEDTLS_SSL_OUT_CONTENT_LEN     4096
 #define MBEDTLS_AES_FEWER_TABLES
 #define MBEDTLS_SHA256_SMALLER
 

@@ -14,9 +14,12 @@
 #include "lwip/dns.h"
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
+#include "mbedtls/ssl.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+_Static_assert(TLS_RECV_BUF_SIZE >= TCP_WND, "the TLS receive buffer must hold a whole TCP window");
 
 // global tls config (shared, no cert verification)
 static struct altcp_tls_config* g_tls_config = NULL;
@@ -63,20 +66,16 @@ static err_t tls_recv_callback(void* arg, struct altcp_pcb* pcb, struct pbuf* p,
         return err;
     }
 
-    // copy data to receive buffer
-    struct pbuf* q = p;
-    size_t total_copied = 0;
-    while (q != NULL) {
-        size_t copied = tls_recv_buf_write(sock, (uint8_t*)q->payload, q->len);
-        total_copied += copied;
-        if (copied < q->len) {
-            break;  // buffer full
-        }
-        q = q->next;
+    // the bytes are acknowledged in tls_socket_receive once read, so a chain
+    // that does not fit yet stays queued in lwIP and the TCP window holds the
+    // peer back instead of data being dropped
+    if (p->tot_len > TLS_RECV_BUF_SIZE - sock->recv_len) {
+        return ERR_MEM;
     }
 
-    // ack received data
-    altcp_recved(pcb, total_copied);
+    for (struct pbuf* q = p; q != NULL; q = q->next) {
+        tls_recv_buf_write(sock, (uint8_t*)q->payload, q->len);
+    }
     pbuf_free(p);
 
     return ERR_OK;
@@ -243,15 +242,22 @@ int tls_socket_connect(tls_socket_t* sock, const char* host, uint16_t port, uint
     char ip_str[16];
     ip_addr_t addr;
 
-    if (ip4addr_aton(host, ip_2_ip4(&addr))) {
-        // valid IP address
-    } else {
-        // try dns resolution
+    bool literal = ip4addr_aton(host, ip_2_ip4(&addr)) != 0;
+    if (!literal) {
         int err = socket_dns_resolve(host, ip_str, sizeof(ip_str));
         if (err != SOCKET_OK) {
             return TLS_ERR_DNS;
         }
         ip4addr_aton(ip_str, ip_2_ip4(&addr));
+
+        // virtual hosts pick their certificate by SNI, which wants the name
+        // rather than the address
+        cyw43_arch_lwip_begin();
+        int sni = mbedtls_ssl_set_hostname(altcp_tls_context(sock->pcb), host);
+        cyw43_arch_lwip_end();
+        if (sni != 0) {
+            return TLS_ERR_NOMEM;
+        }
     }
 
     // reset state
@@ -363,8 +369,14 @@ int tls_socket_receive(tls_socket_t* sock, void* buf, size_t maxlen, uint32_t ti
         }
     }
 
-    // read from buffer
+    // under the lwIP lock so the read cannot race the callback's writes to
+    // recv_len, and the acknowledgement reopens the window by what was consumed
+    cyw43_arch_lwip_begin();
     size_t rd = tls_recv_buf_read(sock, (uint8_t*)buf, maxlen);
+    if (rd > 0 && sock->pcb != NULL) {
+        altcp_recved(sock->pcb, (u16_t)rd);
+    }
+    cyw43_arch_lwip_end();
     return (int)rd;
 }
 
