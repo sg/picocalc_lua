@@ -367,6 +367,7 @@ static int l_draw_load_spritesheet(lua_State* L) {
 
 	int bitmap_size = sprite->width * sprite->height * sprite->count * sizeof(Color);
 	sprite->bitmap = (Color*)malloc(bitmap_size);
+	if (!sprite->bitmap) { f_close(&file); return luaL_error(L, "failed to allocate space for bitmap"); }
 	res = f_read(&file, sprite->bitmap, bitmap_size, NULL);
 	if (res != FR_OK) { f_close(&file); return luaL_error(L, fs_error_strings[res]); }
 
@@ -391,6 +392,7 @@ static int l_draw_new_spritesheet(lua_State* L) {
 
 	int bitmap_size = sprite->width * sprite->height * sprite->count * sizeof(Color);
 	sprite->bitmap = (Color*)malloc(bitmap_size);
+	if (!sprite->bitmap) return luaL_error(L, "failed to allocate space for bitmap");
 	memset(sprite->bitmap, 0, bitmap_size);
 
 	return 1;

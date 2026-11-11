@@ -33,6 +33,9 @@ set(PICO_SDK_FETCH_FROM_GIT_TAG ${sdkVersion})
 include(pico_sdk_import.cmake)
 
 project(picolua)
+# a failed allocation returns NULL instead of halting the device, so Lua can
+# raise "not enough memory" and draw.enableBuffer can report false
+add_compile_definitions(PICO_MALLOC_PANIC=0)
 pico_sdk_init()
 
 add_subdirectory(submodules/lua-5.5.0/src)

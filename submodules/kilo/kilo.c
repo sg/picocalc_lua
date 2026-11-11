@@ -20,6 +20,16 @@
 #include "fs.h"
 #include "sound.h"
 #include "corelua.h"
+#include "pico/platform.h"
+
+// picolua lets an allocation fail, but the editor has no way on without one,
+// so it halts as it did before rather than write through a NULL pointer
+static void *kilo_checked(void *p) {
+	if (!p) panic("Out of memory");
+	return p;
+}
+#define malloc(size) kilo_checked(malloc(size))
+#define realloc(p, size) kilo_checked(realloc(p, size))
 
 /*** defines ***/
 

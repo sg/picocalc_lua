@@ -67,6 +67,7 @@ static int l_fs_read(lua_State* L) {
 	FIL* fp = checkfile(L);
 	UINT to_read = luaL_optinteger(L, 2, 1); 
 	char* buffer = malloc(to_read);
+	if (!buffer && to_read) return luaL_error(L, "not enough memory");
 	UINT read;
 	
 	FRESULT result = f_read(fp, buffer, to_read, &read);
@@ -87,6 +88,7 @@ static int l_fs_readAll(lua_State* L) {
 	FIL* fp = checkfile(L);
 	UINT to_read = f_size(fp);
 	char* buffer = malloc(to_read);
+	if (!buffer && to_read) return luaL_error(L, "not enough memory");
 	UINT read;
 	
 	FRESULT result = f_read(fp, buffer, to_read, &read);

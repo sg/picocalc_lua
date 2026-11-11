@@ -19,10 +19,8 @@ void handle_multicore_fifo() {
 
 void multicore_fifo_push_string(const char* source, size_t len) {
 	char* dest = strndup(source, len);
-	if (!dest) {
-		multicore_fifo_push_blocking_inline(0);
-		multicore_fifo_push_blocking_inline((uint32_t)NULL);
-	}
+	// the receiver always takes two words, so a failed copy goes as an empty string
+	if (!dest) len = 0;
 	multicore_fifo_push_blocking_inline(len);
 	multicore_fifo_push_blocking_inline((uint32_t)dest);
 }

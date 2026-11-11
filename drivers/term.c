@@ -555,6 +555,14 @@ static void history_save(history_t* history, int entry, char* text, int size) {
 	}
 }
 
+// an entry is NULL where saving it ran out of memory, and then reads as empty
+static int history_load(history_t* history, char* buffer) {
+	const char* entry = history->buffer[history->current];
+	int size = entry ? strlen(entry) : 0;
+	if (entry) memcpy(buffer, entry, size);
+	return size;
+}
+
 int term_readline(const char* prompt, char* buffer, int max_length, history_t* history) {
 	int cursor = 0;
 	int size = 0;
@@ -595,14 +603,12 @@ int term_readline(const char* prompt, char* buffer, int max_length, history_t* h
 				term_erase_input(size);
 				history_save(history, history->current, buffer, size);
 				history->current++;
-				size = cursor = strlen(history->buffer[history->current]);
-				memcpy(buffer, history->buffer[history->current], size);
+				size = cursor = history_load(history, buffer);
 			} else if (history && event.code == KEY_DOWN && history->current > 0) {
 				term_erase_input(size);
 				history_save(history, history->current, buffer, size);
 				history->current--;
-				size = cursor = strlen(history->buffer[history->current]);
-				memcpy(buffer, history->buffer[history->current], size);
+				size = cursor = history_load(history, buffer);
 			} else if (event.code == KEY_LEFT) {
 				if (event.modifiers & MOD_CONTROL) {
 					while (cursor > 0 && buffer[cursor] != ' ') cursor--;

@@ -424,14 +424,23 @@ font_t font = {
 	.glyph_colorbuf = NULL
 };
 
+// falling back to the built-in font must work with no memory free, so it can
+// be drawn from flash and has a glyph buffer of its own
+static const u8 default_glyphs[] = DEFAULT_GLYPHS;
+static u16 default_colorbuf[DEFAULT_GLYPH_WIDTH * DEFAULT_GLYPH_HEIGHT];
+
 int lcd_load_font(const char* filename) {
-	if (font.glyphs) { free(font.glyphs); font.glyphs = NULL; }
-	if (font.glyph_colorbuf) { free(font.glyph_colorbuf); font.glyph_colorbuf = NULL; }
+	if (font.glyphs && font.glyphs != default_glyphs) free(font.glyphs);
+	font.glyphs = NULL;
+	if (font.glyph_colorbuf && font.glyph_colorbuf != default_colorbuf) free(font.glyph_colorbuf);
+	font.glyph_colorbuf = NULL;
 	if (font.font_file) { free(font.font_file); font.font_file = NULL; }
 
 	if (!filename || filename[0] == '\0') {
-		font.glyphs = malloc(2049 * sizeof(u8));
-		memcpy(font.glyphs, (u8*)DEFAULT_GLYPHS, 2049);
+		font.glyphs = malloc(sizeof(default_glyphs));
+		if (font.glyphs) memcpy(font.glyphs, default_glyphs, sizeof(default_glyphs));
+		else font.glyphs = (u8*)default_glyphs;
+		font.glyph_colorbuf = default_colorbuf;
 		font.glyph_count = 255;
 		font.glyph_width = DEFAULT_GLYPH_WIDTH;
 		font.glyph_height = DEFAULT_GLYPH_HEIGHT;
@@ -455,15 +464,16 @@ int lcd_load_font(const char* filename) {
 		res = f_read(&fp, &bytesize, 1, NULL);
 		if (res != FR_OK) { lcd_load_font(NULL); return res; }
 		font.glyphs = malloc(font.glyph_count * bytesize * sizeof(u8));
+		font.glyph_colorbuf = malloc(font.glyph_height * font.glyph_width * sizeof(u16));
+		if (!font.glyphs || !font.glyph_colorbuf) { f_close(&fp); lcd_load_font(NULL); return FR_NOT_ENOUGH_CORE; }
 		res = f_read(&fp, font.glyphs, font.glyph_count * bytesize, NULL);
-		if (res != FR_OK) return res;
 		f_close(&fp);
+		if (res != FR_OK) { lcd_load_font(NULL); return res; }
 
 		font.font_file = strdup(filename);
 	}
 
 	font.bytewidth = font.glyph_width/8 + (font.glyph_width % 8 != 0);
-	font.glyph_colorbuf = malloc(font.glyph_height * font.glyph_width * sizeof(u16));
 	font.term_width = LCD_WIDTH / font.glyph_width;
 	font.term_height = LCD_HEIGHT / font.glyph_height;
 	return FR_OK;
