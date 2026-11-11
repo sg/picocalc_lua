@@ -27,7 +27,7 @@ SRC=$(cd "$(dirname "$0")/sd_files" && pwd)
 VERSION=${VERSION:-$(git -C "$SRC" describe --tags --always --dirty=+ 2>/dev/null || echo unknown)}
 OUT=${1:-$DEPLOY/sd_files-$VERSION.tar.gz}
 
-LOCAL_CONFIGS="lua/picolua.conf lua/wx.conf lua/shell/update_config.lua"
+LOCAL_CONFIGS="lua/picolua.conf lua/wx.conf lua/asteroids.conf lua/shell/update_config.lua"
 SECRETS="lua/wifi.conf"
 
 list=$(mktemp)
