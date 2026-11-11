@@ -109,7 +109,7 @@ int l_sound_setup(lua_State* L) {
 		float sustain = luaL_optnumber(L, 5, 0);
 		uint16_t release = luaL_optinteger(L, 6, 0);
 		enum TABLE_MODE table_mode = luaL_optinteger(L, 7, 0);
-		if (table_mode >= TABLE_LOOP) luaL_argerror(L, 7, "wavetable mode outside bounds");
+		if (table_mode > TABLE_LOOP) luaL_argerror(L, 7, "wavetable mode outside bounds");
 		uint16_t table_start = luaL_optinteger(L, 8, 0);
 		int16_t table_playrate = luaL_optinteger(L, 9, 500);
 		uint16_t table_len;
@@ -170,7 +170,7 @@ int l_sound_instset(lua_State *L) {
 	else if (strcmp(key, "release") == 0) { uint16_t release = luaL_checkinteger(L, 3); inst->release = release; }
 	else if (strcmp(key, "table_mode") == 0) {
 		int table_mode = luaL_checkinteger(L, 3);
-		if (table_mode >= TABLE_LOOP) luaL_argerror(L, 3, "wavetable mode outside bounds");
+		if (table_mode > TABLE_LOOP) luaL_argerror(L, 3, "wavetable mode outside bounds");
 		inst->table_mode = table_mode;
 	}
 	else if (strcmp(key, "table_start") == 0) { uint16_t table_start = luaL_checkinteger(L, 3); inst->table_start = table_start; }

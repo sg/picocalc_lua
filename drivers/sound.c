@@ -62,7 +62,7 @@ static int16_t sound_process(sound_channel_t* ch) {
 	}
 	
 	if (ch->table_mode != TABLE_SINGLE) {
-		if (ch->counter % ABS(ch->table_playrate) == 0) {
+		if (ch->table_playrate != 0 && ch->counter % ABS(ch->table_playrate) == 0) {
 			ch->table_pos += SGN(ch->table_playrate);
 			if ((SGN(ch->table_playrate) == 1 && ch->table_pos >= ch->table_end) || 
 					SGN(ch->table_playrate) == -1 && ch->table_pos <= ch->table_start) {
