@@ -45,6 +45,15 @@ typedef struct {
 	uint16_t table_end;
 	int16_t table_playcount;
 	int16_t table_playrate;
+	uint32_t slide_fine;
+	int32_t slide_step;
+	uint32_t slide_cnt;
+	float bandpass_f;
+	float bandpass_q;
+	float bandpass_low;
+	float bandpass_band;
+	float lowpass_k;
+	float lowpass_out;
 } sound_channel_t;
 
 typedef struct {
@@ -58,6 +67,11 @@ typedef struct {
 	uint16_t table_start;
 	uint16_t table_end;
 	int16_t table_playrate;
+	float slide;
+	uint16_t slide_time;
+	uint16_t lowpass;
+	uint16_t bandpass;
+	float resonance;
 } instrument_t;
 
 void sound_init();

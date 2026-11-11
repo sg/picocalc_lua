@@ -28,6 +28,11 @@ instrument_t* l_newinst(lua_State *L) {
 	inst->table_start = 0;
 	inst->table_end = 0;
 	inst->table_playrate = 0;
+	inst->slide = 1;
+	inst->slide_time = 0;
+	inst->lowpass = 0;
+	inst->bandpass = 0;
+	inst->resonance = 1;
 	return inst;
 }
 
@@ -115,6 +120,11 @@ int l_sound_setup(lua_State* L) {
 		uint16_t table_len;
 		sound_getsampledata(wave, &table_len, NULL);
 		uint16_t table_end = luaL_optinteger(L, 10, table_len-1);
+		float slide = luaL_optnumber(L, 11, 1);
+		uint16_t slide_time = luaL_optinteger(L, 12, 0);
+		uint16_t lowpass = luaL_optinteger(L, 13, 0);
+		uint16_t bandpass = luaL_optinteger(L, 14, 0);
+		float resonance = luaL_optnumber(L, 15, 1);
 
 		inst = lua_newuserdata(L, sizeof(instrument_t));
 		luaL_getmetatable(L, instrument);
@@ -130,6 +140,11 @@ int l_sound_setup(lua_State* L) {
 		inst->table_start = table_start;
 		inst->table_end = table_end;
 		inst->table_playrate = table_playrate;
+		inst->slide = slide;
+		inst->slide_time = slide_time;
+		inst->lowpass = lowpass;
+		inst->bandpass = bandpass;
+		inst->resonance = resonance;
 	}
 	
 	return 1;
@@ -149,6 +164,11 @@ int l_sound_instget(lua_State *L) {
 	else if (strcmp(key, "table_start") == 0) { lua_pushinteger(L, inst->table_start); }
 	else if (strcmp(key, "table_end") == 0) { lua_pushinteger(L, inst->table_end); }
 	else if (strcmp(key, "table_playrate") == 0) { lua_pushinteger(L, inst->table_playrate); }
+	else if (strcmp(key, "slide") == 0) { lua_pushnumber(L, inst->slide); }
+	else if (strcmp(key, "slide_time") == 0) { lua_pushinteger(L, inst->slide_time); }
+	else if (strcmp(key, "lowpass") == 0) { lua_pushinteger(L, inst->lowpass); }
+	else if (strcmp(key, "bandpass") == 0) { lua_pushinteger(L, inst->bandpass); }
+	else if (strcmp(key, "resonance") == 0) { lua_pushnumber(L, inst->resonance); }
 	else { lua_pushnil(L); }
 
 	return 1;
@@ -176,6 +196,11 @@ int l_sound_instset(lua_State *L) {
 	else if (strcmp(key, "table_start") == 0) { uint16_t table_start = luaL_checkinteger(L, 3); inst->table_start = table_start; }
 	else if (strcmp(key, "table_end") == 0) { uint16_t table_end = luaL_checkinteger(L, 3); inst->table_end = table_end; }
 	else if (strcmp(key, "table_playrate") == 0) { int16_t table_playrate = luaL_checkinteger(L, 3); inst->table_playrate = table_playrate; }
+	else if (strcmp(key, "slide") == 0) { float slide = luaL_checknumber(L, 3); inst->slide = slide; }
+	else if (strcmp(key, "slide_time") == 0) { uint16_t slide_time = luaL_checkinteger(L, 3); inst->slide_time = slide_time; }
+	else if (strcmp(key, "lowpass") == 0) { uint16_t lowpass = luaL_checkinteger(L, 3); inst->lowpass = lowpass; }
+	else if (strcmp(key, "bandpass") == 0) { uint16_t bandpass = luaL_checkinteger(L, 3); inst->bandpass = bandpass; }
+	else if (strcmp(key, "resonance") == 0) { float resonance = luaL_checknumber(L, 3); inst->resonance = resonance; }
 
 	return 0;
 }
@@ -346,6 +371,19 @@ int luaopen_sound(lua_State *L) {
 	inst->table_end = 0;
 	inst->table_playrate = 0;
 	lua_setfield(L, -2, "triangle");
+
+	inst = l_newinst(L);
+	inst->wave = 12;
+	inst->volume = 1;
+	inst->attack = 0;
+	inst->decay = 500;
+	inst->sustain = 0;
+	inst->release = 0;
+	inst->table_mode = TABLE_LOOP;
+	inst->table_start = 0;
+	inst->table_end = 0;
+	inst->table_playrate = 0;
+	lua_setfield(L, -2, "noise");
 
 	lua_setfield(L, -2, "presets");
 

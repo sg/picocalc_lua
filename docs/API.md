@@ -104,7 +104,7 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 	- [`multiply(color1, color2)`](#multiplycolor1-color2)
 	- [Constants](#constants-2)
 - [`sound` - Programmable Sound Generator](#sound---programmable-sound-generator)
-	- [`instrument([instrument|wave], [volume], [attack], [decay], [sustain], [release], [table_mode], [table_start], [table_playrate], [table_end])`](#instrumentinstrumentwave-volume-attack-decay-sustain-release-table_mode-table_start-table_playrate-table_end)
+	- [`instrument([instrument|wave], [volume], [attack], [decay], [sustain], [release], [table_mode], [table_start], [table_playrate], [table_end], [slide], [slide_time], [lowpass], [bandpass], [resonance])`](#instrumentinstrumentwave-volume-attack-decay-sustain-release-table_mode-table_start-table_playrate-table_end-slide-slide_time-lowpass-bandpass-resonance)
 	- [`play(channel, note, instrument)`](#playchannel-note-instrument)
 	- [`playPitch(channel, pitch, instrument)`](#playpitchchannel-pitch-instrument)
 	- [`off(channel)`](#offchannel)
@@ -976,7 +976,7 @@ Multiply two 16-bit colors together
 
 # `sound` - Programmable Sound Generator
 
-## `instrument([instrument|wave], [volume], [attack], [decay], [sustain], [release], [table_mode], [table_start], [table_playrate], [table_end])`
+## `instrument([instrument|wave], [volume], [attack], [decay], [sustain], [release], [table_mode], [table_start], [table_playrate], [table_end], [slide], [slide_time], [lowpass], [bandpass], [resonance])`
 Create or clone an instrument object to be used to play sounds
 
 **Parameters**
@@ -990,6 +990,11 @@ Create or clone an instrument object to be used to play sounds
 8. `table_start : integer` - Wavetable slice to start sweep at. Defaults to 0
 9.  `table_playrate : integer` - The number of samples to wait before advancing the wavetable sweep, lower numbers mean faster sweep, can be negative. Defaults to 500
 10. `table_end : integer` - Wavetable slice to end sweep at. Defaults to last slice of the selected wavetable
+11. `slide : number` - Pitch reached at the end of the slide, as a multiple of the pitch the note starts at. Defaults to 1.0 (no slide)
+12. `slide_time : integer` - Time in milliseconds over which the pitch slides, after which it holds. Defaults to 0
+13. `lowpass : integer` - Cutoff in Hz of a low-pass filter on the instrument's output. Defaults to 0 (no filter)
+14. `bandpass : integer` - Centre in Hz, up to 2000, of a band-pass filter ahead of the low-pass. Defaults to 0 (no filter)
+15. `resonance : number` - How sharply the band-pass picks out its centre, which comes out amplified this many times. Defaults to 1.0
 
 **Returns**
 1. `Instrument` - Userdata object of an instrument which can be played
@@ -1054,6 +1059,11 @@ Instrument objects have the following attributes which can be read and set:
 - `table_start : integer` - Wavetable slice to start sweep at
 -  `table_playrate : integer` - The number of samples to wait before advancing the wavetable sweep, lower numbers mean faster sweep, can be negative
 -  `table_end : integer` - Wavetable slice to end sweep at
+- `slide : number` - Pitch reached at the end of the slide, as a multiple of the starting pitch
+- `slide_time : integer` - Time in milliseconds over which the pitch slides
+- `lowpass : integer` - Cutoff in Hz of the low-pass filter, 0 for none
+- `bandpass : integer` - Centre in Hz of the band-pass filter, 0 for none
+- `resonance : number` - How sharply the band-pass picks out its centre
 
 ## Constants
 
@@ -1068,6 +1078,7 @@ Instrument objects have the following attributes which can be read and set:
 - `warp`
 - `sine`
 - `triangle`
+- `noise` - One-bit noise (wave 12) that loops for as long as the envelope lasts. The pitch sets the rate at which the noise changes: 1.0 is 16000 times a second, so low pitches rumble and high ones hiss
 
 ### `drums`
 - `kick1`

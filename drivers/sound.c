@@ -54,6 +54,21 @@ static int16_t sound_process(sound_channel_t* ch) {
 	
 	uint32_t sample_pos = (ch->sample_pos / PITCH_RESOLUTION) + (ch->table_pos * ch->sample_len);
 	int16_t out = ch->sample[sample_pos] * amp * ch->volume;
+	if (ch->bandpass_f > 0) {
+		ch->bandpass_low += ch->bandpass_f * ch->bandpass_band;
+		ch->bandpass_band += ch->bandpass_f * (out - ch->bandpass_low - ch->bandpass_q * ch->bandpass_band);
+		// the band's centre comes out amplified by the resonance, which can pass full scale
+		out = CLAMP(ch->bandpass_band, INT16_MIN, INT16_MAX);
+	}
+	if (ch->lowpass_k > 0) {
+		ch->lowpass_out += (out - ch->lowpass_out) * ch->lowpass_k;
+		out = ch->lowpass_out;
+	}
+	if (ch->slide_cnt > 0) {
+		ch->slide_cnt--;
+		ch->slide_fine += ch->slide_step;
+		ch->sample_pos_increment = ch->slide_fine >> 16;
+	}
 	ch->sample_pos += ch->sample_pos_increment;
 
 	if (ch->sample_pos / PITCH_RESOLUTION >= ch->sample_len) {
@@ -252,9 +267,31 @@ void sound_playpitch(uint8_t ch, float pitch, instrument_t *inst) {
 		schedule_chs[ch].table_playrate *= -1;
 	}
 
+	float increment = pitch * (uint16_t)*(sample + 2)/1000 * PITCH_RESOLUTION;
+	schedule_chs[ch].sample_pos_increment = CLAMP(increment, 0, UINT16_MAX);
+
+	// 16.16 fixed point, so that a slow slide does not stall on rounding
+	schedule_chs[ch].slide_cnt = inst->slide == 1.0f ? 0 : inst->slide_time * BITRATE / 1000;
+	if (schedule_chs[ch].slide_cnt > 0) {
+		float target = increment * inst->slide;
+		target = CLAMP(target, 0, UINT16_MAX);
+		schedule_chs[ch].slide_fine = (uint32_t)schedule_chs[ch].sample_pos_increment << 16;
+		schedule_chs[ch].slide_step = (target - schedule_chs[ch].sample_pos_increment) * 65536.0f / schedule_chs[ch].slide_cnt;
+	}
+
+	// a state-variable filter is only stable with its centre well below the sample rate
+	float centre = inst->bandpass < BITRATE / 8 ? inst->bandpass : BITRATE / 8;
+	schedule_chs[ch].bandpass_f = centre > 0 ? 2.0f * sinf(3.1416f * centre / BITRATE) : 0;
+	schedule_chs[ch].bandpass_q = 1.0f / (inst->resonance > 0.5f ? inst->resonance : 0.5f);
+	schedule_chs[ch].bandpass_low = 0;
+	schedule_chs[ch].bandpass_band = 0;
+
+	schedule_chs[ch].lowpass_k = inst->lowpass > 0 ? 1.0f - expf(-6.2832f * inst->lowpass / BITRATE) : 0;
+	schedule_chs[ch].lowpass_out = 0;
+
+	// set last, since the interrupt takes the note as soon as it sees these
 	schedule_chs[ch].playing = true;
 	schedule_chs[ch].start_at = get_sampletime_correction();
-	schedule_chs[ch].sample_pos_increment = pitch * (uint16_t)*(sample + 2)/1000 * PITCH_RESOLUTION;
 }
 
 void sound_off(uint8_t ch) {
@@ -287,6 +324,7 @@ void sound_setpitch(uint8_t ch, float pitch, bool relative) {
 	if (ch >= CHANNELS) return;
 
 	if (sound_chs[ch].playing) {
+		sound_chs[ch].slide_cnt = 0;
 		if (relative) {
 			sound_chs[ch].sample_pos_increment += pitch * PITCH_RESOLUTION;
 		} else {
