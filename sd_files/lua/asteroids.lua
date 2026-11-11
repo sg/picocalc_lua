@@ -78,8 +78,8 @@ local function transform(shape, x, y, ang, scale, out)
 	return out
 end
 
--- A frame drawn in a RAM framebuffer and sent whole is never seen half erased; without the 100 KB
--- that needs, each shape is erased and redrawn alone so that it vanishes only briefly.
+-- A frame drawn in a framebuffer and sent whole is never seen half erased; without one, each shape
+-- is erased and redrawn alone so that it vanishes only briefly.
 local buffered = false
 local scratch = {}
 
@@ -305,10 +305,18 @@ local function main()
 	end
 end
 
+-- QSPI PSRAM is mapped into memory, so a framebuffer there is quick and takes no heap; picolua
+-- panics when an allocation fails, so one in RAM is risked only with far more memory free than it needs.
+local function enable_buffer()
+	if psram and psram.stats and psram.stats().qspi and draw.enableBuffer(1) then return true end
+	collectgarbage()
+	return sys.freeMemory() >= 256 * 1024 and draw.enableBuffer(2)
+end
+
 local blink = term.getCursorBlink()
 term.setCursorBlink(false)
 term.clear()
-buffered = draw.enableBuffer(2)
+buffered = enable_buffer()
 -- Even when stopped with Break, the terminal gets its cursor back and the keys held in the game stay out of the shell.
 local ok, err = pcall(main)
 draw.enableBuffer(0)
