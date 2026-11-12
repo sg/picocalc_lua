@@ -42,6 +42,10 @@ local DEFAULT_CONFIG = {
   uf2_asset = "picolua-{board}-{tag}.uf2",
 }
 
+-- unpacking needs one unbroken 32 KB block for the gzip window, and has
+-- failed to get it when the largest block free beforehand was 33 KB or less
+local SPARE_BLOCK = 48 * 1024
+
 ------------------------------------------------------------
 -- HELPERS
 ------------------------------------------------------------
@@ -66,6 +70,16 @@ local function load_config()
     if cfg[k] == nil then cfg[k] = v end
   end
   return cfg, source
+end
+
+local function memory_is_short()
+  -- the second pass frees what the first finalized
+  collectgarbage()
+  collectgarbage()
+  local ok, block = pcall(string.rep, "\0", SPARE_BLOCK)
+  block = nil
+  collectgarbage()
+  return not ok
 end
 
 -- read current version from /version.txt
@@ -161,15 +175,21 @@ end
 
 -- stream-download a file, return bytes written or nil + error
 local function download_file(url, dest_path, sh)
-  local http = require("lua/modules/http")
-  collectgarbage("collect")
-
-  local resp = http.get(url, { output_file = dest_path })
+  -- a request that raises, as one out of memory does, is a failed
+  -- download like any other and must still free the module
+  local ok, resp = pcall(function()
+    local http = require("lua/modules/http")
+    collectgarbage("collect")
+    return http.get(url, { output_file = dest_path })
+  end)
 
   -- free http module
   package.loaded["lua/modules/http"] = nil
   collectgarbage("collect")
 
+  if not ok then
+    return nil, tostring(resp)
+  end
   if not resp then
     return nil, "No response from server"
   end
@@ -264,14 +284,13 @@ local function create_backup(current_version, sh)
   for _, s in ipairs(sources) do
     table.insert(tar_args, "/" .. s)
   end
-  sh:execute("tar", tar_args)
-
-  if fs.exists(archive) then
+  if sh:execute("tar", tar_args) then
     sh:success("Backup created: /" .. archive)
     return true
-  else
-    return false, "Backup failed"
   end
+  -- what a failed tar leaves behind would pass for a backup
+  if fs.exists(archive) then fs.delete(archive) end
+  return false, "archive not written"
 end
 
 ------------------------------------------------------------
@@ -290,8 +309,7 @@ local function extract_update(archive_path, dest, sh)
   if dest and dest ~= "" then
     table.insert(tar_args, dest)
   end
-  sh:execute("tar", tar_args)
-  return true
+  return sh:execute("tar", tar_args)
 end
 
 ------------------------------------------------------------
@@ -374,6 +392,20 @@ local function do_update(args, sh)
     return
   end
 
+  -- a session short of memory can fail partway, when the card already
+  -- holds some of the new files
+  if memory_is_short() then
+    term.write("\n")
+    sh:warn("memory is low or fragmented.")
+    term.write("The update may fail; rebooting first is safer.\n")
+    ans = term.read("Continue anyway? [y/N]: ")
+    ans = ans and ans:lower() or "n"
+    if ans ~= "y" then
+      term.write("Cancelled.\n")
+      return
+    end
+  end
+
   -- backup current installation
   term.write("\n")
   local ok, backup_err = create_backup(current, sh)
@@ -404,14 +436,24 @@ local function do_update(args, sh)
 
     -- extract to root of SD card
     -- pass absolute paths so tar resolves them correctly
-    extract_update("/" .. tmp_archive, "/", sh)
+    local extracted = extract_update("/" .. tmp_archive, "/", sh)
 
     -- clean up temp file
     if fs.exists(tmp_archive) then fs.delete(tmp_archive) end
     term.write("\n")
+
+    if not extracted then
+      sh:error("SD card files were not fully updated.")
+      term.write("The card may hold a mix of old and new files.\n")
+      term.write("Reboot, then run " .. c.cyan .. "update" .. c.white
+        .. " again.\n")
+      return false
+    end
+    write_version(latest)
   end
 
   -- download firmware
+  local fw_saved = false
   if do_fw then
     ensure_dir(fw_dir)
     local fw_dest = fw_dir .. "/" .. fw_name
@@ -422,31 +464,34 @@ local function do_update(args, sh)
       if fs.exists(fw_dest) then fs.delete(fw_dest) end
       sh:error("Firmware download failed: " .. (dl_err or "unknown"))
     else
+      fw_saved = true
       sh:success("Firmware saved to /" .. fw_dest
         .. " (" .. sh:format_size(bytes) .. ")")
     end
     term.write("\n")
   end
 
-  -- update version file
-  if do_sd then
-    write_version(latest)
-  end
-
   -- summary
-  term.write(c.green .. "Update complete!" .. c.white .. "\n")
+  local complete = fw_saved or not do_fw
+  if complete then
+    term.write(c.green .. "Update complete!" .. c.white .. "\n")
+  else
+    term.write(c.yellow .. "Update incomplete: no firmware was downloaded."
+      .. c.white .. "\n")
+  end
   if do_sd then
     term.write("SD files updated to " .. latest .. "\n")
     term.write("Run " .. c.cyan .. "reload" .. c.white
       .. " to reload shell commands.\n")
   end
-  if do_fw then
+  if fw_saved then
     term.write("\nTo install firmware:\n")
     term.write("  1. Reboot while holding " .. c.yellow
       .. "Up Arrow" .. c.white .. " to enter uf2-loader\n")
     term.write("  2. Select " .. c.cyan .. fw_name
       .. c.white .. " from /" .. fw_dir .. "/\n")
   end
+  return complete
 end
 
 ------------------------------------------------------------
@@ -479,11 +524,8 @@ return {
     .. c.white .. " - check for and install updates",
   run = function(args, sh)
     if args[1] == "config" then
-      show_config(sh)
-    elseif args[1] == "check" then
-      do_update(args, sh)
-    else
-      do_update(args, sh)
+      return show_config(sh)
     end
+    return do_update(args, sh)
   end,
 }

@@ -62,10 +62,10 @@ Runs the full update flow:
 2. Queries the forge for the latest tagged release
 3. Compares versions (semver: `vX.Y.Z`)
 4. If an update is available, asks what to install
-5. Creates a backup archive
-6. Downloads and extracts SD card files
-7. Downloads firmware to the uf2-loader directory
-8. Updates `/version.txt`
+5. Checks that enough memory is free, and asks before going on if not
+6. Creates a backup archive
+7. Downloads and extracts SD card files, then updates `/version.txt`
+8. Downloads firmware to the uf2-loader directory
 
 ### `update check`
 
@@ -101,13 +101,13 @@ The backup includes:
 - `cc/` -- ComputerCraft compatibility modules
 - `version.txt` -- the current version marker
 
-If the backup fails, the updater warns and asks whether to continue without a backup.
+If the backup fails, the updater deletes the partial archive, warns and asks whether to continue without a backup.
 
 ### SD Card File Update
 
 The SD card files archive (e.g. `sd_files-v0.2.0.tar.gz`) is downloaded to a temporary file at the root of the SD card, then extracted in place. The tar extractor prompts before overwriting existing files -- type `a` at the first prompt to accept all overwrites.
 
-After extraction the temp file is deleted and `/version.txt` is updated to the new version.
+After extraction the temp file is deleted and `/version.txt` is updated to the new version. If the extraction fails the updater stops there: `/version.txt` keeps the old version, no firmware is downloaded, and running `update` again after a reboot repeats the whole update.
 
 ### Firmware Update
 
@@ -229,6 +229,10 @@ The release workflow then stages a draft release with the assets; publish it fro
 
 **Backup fails** -- Check that there is enough free space on the SD card. The backup archives the entire `lua/` directory which can be several hundred KB.
 
+**"memory is low or fragmented"** -- The session has used too much of the heap for the update to be safe, usually after running other programs. Answer `n`, reboot and run `update` first thing.
+
+**"SD card files were not fully updated"** -- The extraction stopped, most often with `not enough memory`, and the card may hold a mix of old and new files. Reboot and run `update` again; it starts over and replaces every file.
+
 **Extraction issues** -- If the update archive has an unexpected directory structure, files may extract to the wrong location. The archive should contain paths relative to the SD card root (e.g. `shell.lua`, `lua/modules/http.lua`, not `/sd_files/shell.lua`).
 
 ## Memory Considerations
@@ -239,7 +243,8 @@ The update process is designed for the PicoCalc's constrained memory (~200KB tot
 - Downloads stream directly to disk in 4KB chunks, not buffered in RAM
 - The HTTP and JSON modules are unloaded after each use
 - Garbage collection runs aggressively between operations
-- The tar backup and extract stream in 4KB blocks
+- The tar backup and extract stream in 1KB blocks and collect garbage after each, so the buffers fit a fragmented heap
+- Unpacking the `.tar.gz` needs one unbroken 32KB block for the gzip window, which is what a long-running session most often lacks; the updater tests for a 48KB block before it starts
 
 ## Restoring from Backup
 
