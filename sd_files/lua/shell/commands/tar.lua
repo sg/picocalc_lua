@@ -17,7 +17,8 @@ local gzip = _G.gzip  -- nil if firmware doesn't include gzip module
 
 local BLOCK = 512
 local ZERO_BLOCK = string.rep("\0", BLOCK)
-local READ_SIZE = 4096
+-- small, so that a heap broken into small holes can still supply the buffers
+local READ_SIZE = 1024
 
 -- UStar header layout shared by the writer and the reader:
 -- name mode uid gid size mtime chksum type linkname magic
@@ -137,19 +138,25 @@ local function parent_of(path)
   return path:match("^(.+)/[^/]+$")
 end
 
--- write a single file's data to the archive in streaming chunks
--- runs GC every 16KB to prevent dead string accumulation
--- (aggressive due to heap fragmentation when WiFi is active)
-local function write_file_data(out, fspath, size)
-  local f = fs.open(fspath, "r")
-  if not f then return false, "Cannot read: " .. fspath end
-
+local function copy_data(from, to, size)
   local rem = size
   while rem > 0 do
-    local data = f:read(math.min(READ_SIZE, rem))
+    local data = from:read(math.min(READ_SIZE, rem))
     if not data then break end
-    out:write(data)
+    to:write(data)
     rem = rem - #data
+    -- firmware up to v0.6.5 takes read buffers without collecting first,
+    -- so the dead chunks of a large file would exhaust the heap
+    collectgarbage()
+  end
+  return size - rem
+end
+
+-- write a single file's data to the archive in streaming chunks
+local function write_file_data(out, fspath, size)
+  local f <close> = fs.open(fspath, "r")
+  if copy_data(f, out, size) < size then
+    return false, "Cannot read: " .. fspath
   end
   f:close()
 
@@ -211,7 +218,7 @@ end
 -- TAR CREATE
 ------------------------------------------------------------
 local function tar_create(archive_fs, sources, sh)
-  local out = fs.open(archive_fs, "w")
+  local out <close> = fs.open(archive_fs, "w")
   if not out then return sh:error("Cannot create: " .. archive_fs) end
 
   local total = 0
@@ -232,6 +239,7 @@ local function tar_create(archive_fs, sources, sh)
   out:close()
 
   sh:success(string.format("Created archive: %d entries", total))
+  return true
 end
 
 ------------------------------------------------------------
@@ -245,18 +253,28 @@ local function skip_data(f, size)
   end
 end
 
-local function tar_extract(archive_fs, dest, sh)
-  local is_gz = archive_fs:match("%.tar%.gz$") or archive_fs:match("%.tgz$")
-  local f
-  if is_gz then
+local function open_archive(archive_fs)
+  local open = fs.open
+  if archive_fs:match("%.tar%.gz$") or archive_fs:match("%.tgz$") then
     if not gzip then
-      return sh:error("gzip module not available (firmware update required)")
+      return nil, "gzip module not available (firmware update required)"
     end
-    f = gzip.open(archive_fs)
-  else
-    f = fs.open(archive_fs, "r")
+    -- the reader needs one unbroken 32 KB block, which garbage may be
+    -- holding; the second pass frees what the first finalized
+    collectgarbage()
+    collectgarbage()
+    open = gzip.open
   end
-  if not f then return sh:error("Cannot open: " .. archive_fs) end
+  local ok, f = pcall(open, archive_fs)
+  if not ok then
+    return nil, "Cannot open " .. archive_fs .. ": " .. tostring(f)
+  end
+  return f
+end
+
+local function tar_extract(archive_fs, dest, sh)
+  local f <close>, err = open_archive(archive_fs)
+  if not f then return sh:error(err) end
 
   local count = 0
   local skipped = 0
@@ -300,21 +318,17 @@ local function tar_extract(archive_fs, dest, sh)
       local par = parent_of(clean)
       if par then mkdirs(par) end
 
-      local out = fs.open(clean, "w")
+      local out <close> = fs.open(clean, "w")
       if not out then
-        f:close()
         return sh:error("Cannot create: " .. clean)
       end
 
-      local rem = h.size
-      while rem > 0 do
-        local data = f:read(math.min(READ_SIZE, rem))
-        if not data then break end
-        out:write(data)
-        rem = rem - #data
-      end
+      local copied = copy_data(f, out, h.size)
       out:flush()
       out:close()
+      if copied < h.size then
+        return sh:error("Archive ends inside: " .. h.name)
+      end
 
       -- skip past block padding
       local tail = h.size % BLOCK
@@ -335,23 +349,15 @@ local function tar_extract(archive_fs, dest, sh)
     msg = msg .. string.format(", %d skipped", skipped)
   end
   sh:success(msg)
+  return true
 end
 
 ------------------------------------------------------------
 -- TAR LIST
 ------------------------------------------------------------
 local function tar_list(archive_fs, sh)
-  local is_gz = archive_fs:match("%.tar%.gz$") or archive_fs:match("%.tgz$")
-  local f
-  if is_gz then
-    if not gzip then
-      return sh:error("gzip module not available (firmware update required)")
-    end
-    f = gzip.open(archive_fs)
-  else
-    f = fs.open(archive_fs, "r")
-  end
-  if not f then return sh:error("Cannot open: " .. archive_fs) end
+  local f <close>, err = open_archive(archive_fs)
+  if not f then return sh:error(err) end
 
   local count = 0
   local total = 0
@@ -381,6 +387,7 @@ local function tar_list(archive_fs, sh)
 
   f:close()
   term.write(string.format("\n%d entries, %d bytes total\n", count, total))
+  return true
 end
 
 ------------------------------------------------------------
@@ -429,7 +436,7 @@ return {
         table.insert(sources, { fspath = fspath, name = name })
       end
 
-      tar_create(archive_fs, sources, sh)
+      return tar_create(archive_fs, sources, sh)
 
     elseif op == "x" or op == "extract" then
       if not fs.exists(archive_fs) then
@@ -449,14 +456,14 @@ return {
         dest = sh:fs_path(sh.cwd)
       end
 
-      tar_extract(archive_fs, dest, sh)
+      return tar_extract(archive_fs, dest, sh)
 
     elseif op == "t" or op == "list" then
       if not fs.exists(archive_fs) then
         return sh:error("Not found: " .. args[2])
       end
 
-      tar_list(archive_fs, sh)
+      return tar_list(archive_fs, sh)
 
     else
       return sh:error("Unknown operation: " .. op .. " (use c, x, or t)")
