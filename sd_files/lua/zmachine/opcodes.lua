@@ -592,9 +592,9 @@ end
 
 -- VAR:16 get_cursor array (V4+)
 function opcodes.var.get_cursor(ops)
-    local x, y = term.getCursorPos()
-    mem.write_word(ops[1], y)
-    mem.write_word(ops[1] + 2, x)
+    local row, col = zio.get_cursor()
+    mem.write_word(ops[1], row)
+    mem.write_word(ops[1] + 2, col)
 end
 
 -- VAR:17 set_text_style style (V4+)
@@ -748,7 +748,7 @@ function opcodes.var.print_table(ops)
     local height = ops[3] or 1
     local skip = ops[4] or 0
 
-    local x, y = term.getCursorPos()
+    local y, x = zio.get_cursor()
 
     for row = 1, height do
         for col = 1, width do
@@ -758,8 +758,11 @@ function opcodes.var.print_table(ops)
         end
         addr = addr + skip
         if row < height then
-            y = y + 1
-            term.setCursorPos(x, y)
+            if zio.in_upper() then
+                zio.set_cursor(y + row, x)
+            else
+                zio.newline()
+            end
         end
     end
 end

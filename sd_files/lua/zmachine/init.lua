@@ -4,10 +4,37 @@
 local zmachine = {}
 zmachine.VERSION = "1.0"
 
+-- quetzal is loaded with the rest so that saving never has to compile code in what a game leaves free
+local MODULES = { "memory", "text", "objects", "io", "opcodes", "quetzal", "vm" }
+
+-- Debug information is a quarter of the interpreter's code and a game is left little memory,
+-- so the modules are loaded without it; set the global ZMACHINE_DEBUG for line numbers in errors.
+local function load_modules()
+    for _, name in ipairs(MODULES) do
+        local path = "lua/zmachine/" .. name
+        if not package.loaded[path] then
+            local chunk = assert(loadfile("/" .. path .. ".lua"))
+            if not ZMACHINE_DEBUG then
+                local code = string.dump(chunk, true)
+                chunk = nil
+                collectgarbage()
+                chunk = assert(load(code, "=" .. path, "b"))
+            end
+            package.loaded[path] = chunk()
+            collectgarbage()
+        end
+    end
+end
+
 -- Run a Z-machine game
 function zmachine.run(filepath)
     -- Force garbage collection before starting
     collectgarbage("collect")
+
+    local loaded, load_err = pcall(load_modules)
+    if not loaded then
+        return false, load_err
+    end
 
     -- Load VM module
     local vm = require("lua/zmachine/vm")
@@ -19,14 +46,13 @@ function zmachine.run(filepath)
         return false, result
     end
 
-    local version = result
-    print("Z-machine version " .. version .. " interpreter ready.")
-    print("Type commands at the prompt. Use 'quit' to exit.\n")
-
     -- Run the interpreter
     local success, err = pcall(function()
         vm.run()
     end)
+
+    -- the screen may hold text not yet drawn, and the shell needs the cursor below it
+    pcall(vm.zio.finish)
 
     -- Clean up
     vm.shutdown()

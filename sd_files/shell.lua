@@ -1454,6 +1454,12 @@ local builtin_commands = {
       term.write(c.cyan .. "Tot. Memory:  " .. c.white .. sh:format_size(totalMem) .. "\n")
       term.write(c.cyan .. "Used Memory:  " .. c.white .. sh:format_size(usedMem) .. "\n")
       term.write(c.cyan .. "Free Memory:  " .. c.white .. sh:format_size(freeMem) .. "\n")
+      -- firmware up to v0.6.6 has no stack of Lua's own to report on
+      if sys.stackFree then
+        local least, size = sys.stackFree()
+        term.write(c.cyan .. " Stack Free:  " .. c.white .. sh:format_size(least)
+          .. " least of " .. sh:format_size(size) .. "\n")
+      end
       term.write(c.cyan .. "    Battery:  " .. c.white .. sys.battery() .. " %\n")
 
       if wifi and wifi.isInitialized and wifi.isInitialized() then

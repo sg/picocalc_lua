@@ -65,6 +65,7 @@ function vm.init(filepath)
     vm.txt.init(vm.mem, vm.version)
     vm.obj.init(vm.mem, vm.txt, vm.version)
     vm.zio.init(vm.mem, vm.txt, vm.version)
+    vm.zio.status_hook = (vm.version <= 3) and vm.update_status_line or nil
     ops.init(vm)
 
     -- Build handler tables (once, not per instruction!)
@@ -127,6 +128,7 @@ function vm.shutdown()
     package.loaded["lua/zmachine/objects"] = nil
     package.loaded["lua/zmachine/io"] = nil
     package.loaded["lua/zmachine/opcodes"] = nil
+    package.loaded["lua/zmachine/quetzal"] = nil
 
     collectgarbage("collect")
 end
@@ -754,7 +756,7 @@ function vm.update_status_line()
 
     -- Get current location object (global 0)
     local loc_obj = vm.get_variable(16)  -- Global 0 = var 16
-    local location = vm.obj.get_name(loc_obj)
+    local location = loc_obj ~= 0 and vm.obj.get_name(loc_obj) or ""
 
     -- Check if time game (bit 1 of flags1)
     local flags1 = vm.mem.read_byte(vm.mem.HDR_FLAGS1)
@@ -762,6 +764,8 @@ function vm.update_status_line()
 
     local val1 = vm.get_variable(17)  -- Global 1 = score or hours
     local val2 = vm.get_variable(18)  -- Global 2 = moves or minutes
+    -- a score can go below zero
+    if not is_time and val1 >= 0x8000 then val1 = val1 - 0x10000 end
 
     vm.zio.draw_status_line(location, val1, val2, is_time)
 end
@@ -770,116 +774,75 @@ end
 -- Save/Restore
 -- ============================================================
 
-function vm.save_game()
-    vm.zio.flush()
-    vm.zio.print("\nSave filename: ")
+-- asks for a file name; returns nil if the player gives none
+local function ask_filename(prompt)
+    vm.zio.print("\n" .. prompt)
     local filename = vm.zio.read_line(64)
-
     if filename == "" then
-        return false
+        return nil
     end
-
-    -- Add extension if needed
     if not filename:match("%.sav$") then
         filename = filename .. ".sav"
     end
+    return filename
+end
 
-    local save_data = {
-        version = vm.version,
-        pc = vm.pc,
-        stack = {},
-        call_stack = {},
-        dynamic = vm.mem.get_dynamic_snapshot()
-    }
-
-    -- Deep copy stack
-    for i, v in ipairs(vm.stack) do
-        save_data.stack[i] = v
-    end
-
-    -- Deep copy call stack
-    for i, frame in ipairs(vm.call_stack) do
-        save_data.call_stack[i] = {
-            return_pc = frame.return_pc,
-            stack_ptr = frame.stack_ptr,
-            store_result = frame.store_result,
-            store_var = frame.store_var,
-            num_args = frame.num_args,
-            locals = {}
-        }
-        for j, v in pairs(frame.locals) do
-            save_data.call_stack[i].locals[j] = v
-        end
-    end
-
-    -- Serialize with simple format
-    local serialize = require("lua/modules/serialize")
-    local file_handle = fs.open(filename, "w")
-    if not file_handle then
-        vm.zio.print("\nCannot create save file.\n")
+function vm.save_game()
+    local filename = ask_filename("Save filename: ")
+    if not filename then
         return false
     end
-    serialize.toFile(save_data, file_handle)
-    file_handle:close()
 
-    package.loaded["lua/modules/serialize"] = nil
+    local ok, err = pcall(function()
+        local data = require("lua/zmachine/quetzal").encode(vm)
+        local file = fs.open(filename, "w")
+        file:write(data)
+        file:close()
+    end)
 
-    vm.zio.print("\nGame saved.\n")
+    if not ok then
+        -- a partly written file would pass for a save
+        pcall(fs.delete, filename)
+        vm.zio.print("Cannot save: " .. tostring(err) .. "\n")
+        return false
+    end
     return true
 end
 
-function vm.load_save_file(filename)
-    local func, err = loadfile(filename)
-    if func then
-        local success, save_data = pcall(func)
-        if success then
-            return save_data
-        else
-            vm.zio.print("Error loading save file values: " .. save_data .. "\n")
-            return nil
-        end
-    else
-        vm.zio.print("\nError loading save file: " .. (err or "unknown error") .. "\n")
-        return nil
-    end
-end
-
 function vm.restore_game()
-    vm.zio.flush()
-    vm.zio.print("\nRestore filename: ")
-    local filename = vm.zio.read_line(64)
-
-    if filename == "" then
+    local filename = ask_filename("Restore filename: ")
+    if not filename then
         return false
-    end
-
-    if not filename:match("%.sav$") then
-        filename = filename .. ".sav"
     end
 
     if not fs.exists(filename) then
-        vm.zio.print("\nSave file not found.\n")
+        vm.zio.print("Save file not found.\n")
         return false
     end
 
-    local save_data = vm.load_save_file(filename)
+    -- a restored header carries the saving interpreter's settings; this one's replace them below
+    local flags2 = vm.mem.read_word(vm.mem.HDR_FLAGS2)
 
-    if not save_data then
+    local ok, done, err = pcall(function()
+        local file = fs.open(filename, "r")
+        -- checked before the rest is read, as some other file could be far too large to hold
+        local data = file:read(12) or ""
+        if data:sub(1, 4) == "FORM" and data:sub(9, 12) == "IFZS" then
+            data = data .. (file:read(fs.getSize(filename)) or "")
+        end
+        file:close()
+        return require("lua/zmachine/quetzal").decode(vm, data)
+    end)
+
+    if not ok or not done then
+        vm.zio.print("Cannot restore: " .. tostring(ok and err or done) .. "\n")
         return false
     end
 
-    if save_data.version ~= vm.version then
-        vm.zio.print("\nSave file is for different game version.\n")
-        return false
-    end
-
-    -- Restore state
-    vm.pc = save_data.pc
-    vm.stack = save_data.stack
-    vm.call_stack = save_data.call_stack
-    vm.mem.restore_dynamic(save_data.dynamic)
-
-    vm.zio.print("\nGame restored.\n")
+    vm.mem.write_word(vm.mem.HDR_FLAGS2, flags2)
+    vm.setup_header()
+    -- the standard has a V3 restore collapse the upper window
+    if vm.version <= 3 then vm.zio.split_window(0) end
     return true
 end
 

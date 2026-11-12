@@ -1,16 +1,25 @@
 -- Z-Machine Memory Module
 -- Handles story file loading and memory access
--- Uses PSRAM for story storage with sparse overlay for writes
+-- Uses PSRAM for story storage, with the changed parts of dynamic memory held as strings
 
 local memory = {}
-memory.VERSION = "1.1"
+memory.VERSION = "2.0"
 
 -- Memory regions
 memory.story = nil          -- PSRAM address for story file
 memory.story_size = 0       -- Size of loaded story
-memory.writes = {}          -- Sparse table of modified bytes (addr -> value)
 memory.dynamic_size = 0     -- Size of dynamic memory region
 memory.static_base = 0      -- Start of static memory
+
+-- A page of dynamic memory the game has written to is kept here as a string
+-- (false until then), since a table entry per changed byte cost far more and
+-- grew by doubling, which the heap could not always supply.
+local PAGE_BITS = 7
+local PAGE_SIZE = 1 << PAGE_BITS
+local PAGE_MASK = PAGE_SIZE - 1
+local pages = {}
+
+local byte, char, sub = string.byte, string.char, string.sub
 
 -- Read cache for performance
 local read_cache = nil
@@ -33,6 +42,20 @@ memory.HDR_CHECKSUM = 0x1C
 memory.HDR_ROUTINE_OFF = 0x28
 memory.HDR_STRING_OFF = 0x2A
 
+-- on firmware up to v0.6.6 psram.read takes its buffer from the C heap, which
+-- runs no collection of its own, so it can fail while garbage holds the space;
+-- the second pass frees what the first finalized
+local function story_read(offset, count)
+    local data = psram.read(memory.story, offset, count)
+    for _ = 1, 2 do
+        if data then return data end
+        collectgarbage()
+        data = psram.read(memory.story, offset, count)
+    end
+    -- carrying on with zeros in place of the story would run the game off into garbage
+    return data or error("out of memory reading the story")
+end
+
 -- Read a byte from PSRAM (internal, bypasses write overlay)
 local function psram_read_byte(addr)
     -- Check cache first
@@ -41,18 +64,16 @@ local function psram_read_byte(addr)
     end
 
     -- Cache miss - read a chunk
-    cache_base = addr - (addr % CACHE_SIZE)
-    local to_read = math.min(CACHE_SIZE, memory.story_size - cache_base)
+    local base = addr - (addr % CACHE_SIZE)
+    local to_read = math.min(CACHE_SIZE, memory.story_size - base)
     if to_read <= 0 then
         return 0
     end
 
-    read_cache = psram.read(memory.story, cache_base, to_read)
-    if not read_cache then
-        read_cache = nil
-        cache_base = -1
-        return 0
-    end
+    -- dropped first so that a collection during the read can reclaim it
+    read_cache, cache_base = nil, -1
+    read_cache = story_read(base, to_read)
+    cache_base = base
 
     return string.byte(read_cache, addr - cache_base + 1) or 0
 end
@@ -69,9 +90,11 @@ function memory.read_byte(addr)
         error("Memory access error: address " .. addr .. " out of bounds")
     end
 
-    -- Check write overlay first (for modified dynamic memory)
-    if addr < memory.dynamic_size and memory.writes[addr] ~= nil then
-        return memory.writes[addr]
+    if addr < memory.dynamic_size then
+        local page = pages[(addr >> PAGE_BITS) + 1]
+        if page then
+            return byte(page, (addr & PAGE_MASK) + 1)
+        end
     end
 
     -- Read from PSRAM
@@ -104,13 +127,49 @@ function memory.write_byte(addr, value)
         error("Memory write error: address " .. addr .. " is in static memory")
     end
 
-    memory.writes[addr] = value & 0xFF
+    local index = (addr >> PAGE_BITS) + 1
+    local page = pages[index] or memory.original_page(index)
+    local offset = addr & PAGE_MASK
+    pages[index] = sub(page, 1, offset) .. char(value & 0xFF) .. sub(page, offset + 2)
 end
 
 -- Write a 16-bit word (big-endian)
 function memory.write_word(addr, value)
-    memory.write_byte(addr, (value & 0xFF00) >> 8)
-    memory.write_byte(addr + 1, value & 0xFF)
+    local offset = addr & PAGE_MASK
+    if offset == PAGE_MASK or addr < 0 or addr + 1 >= memory.dynamic_size then
+        memory.write_byte(addr, (value & 0xFF00) >> 8)
+        memory.write_byte(addr + 1, value & 0xFF)
+        return
+    end
+    -- both bytes lie in one page, so it is rebuilt once
+    local index = (addr >> PAGE_BITS) + 1
+    local page = pages[index] or memory.original_page(index)
+    pages[index] = sub(page, 1, offset) .. char((value >> 8) & 0xFF, value & 0xFF) .. sub(page, offset + 3)
+end
+
+-- Number of pages dynamic memory is cut into
+function memory.page_count()
+    return (memory.dynamic_size + PAGE_MASK) >> PAGE_BITS
+end
+
+-- A page of dynamic memory as the story file has it
+function memory.original_page(index)
+    local base = (index - 1) << PAGE_BITS
+    return story_read(base, math.min(PAGE_SIZE, memory.dynamic_size - base))
+end
+
+-- Bytes of the story file as loaded, whatever the game has since written
+function memory.original_bytes(addr, count)
+    return story_read(addr, count)
+end
+
+-- A page as the game has changed it, or false if it has not
+function memory.get_page(index)
+    return pages[index]
+end
+
+function memory.set_page(index, page)
+    pages[index] = page
 end
 
 -- Read multiple bytes as a string
@@ -184,7 +243,6 @@ function memory.load(filepath)
 
     memory.story = psram_addr
     memory.story_size = size
-    memory.writes = {}
     invalidate_cache()
 
     -- Read header to get dynamic memory size
@@ -201,6 +259,7 @@ function memory.load(filepath)
 
     -- Dynamic memory is everything below static base
     memory.dynamic_size = memory.static_base
+    memory.reset_dynamic()
 
     -- Validate version
     local version = string.byte(header_data, memory.HDR_VERSION + 1)
@@ -219,9 +278,9 @@ function memory.unload()
         memory.story = nil
     end
     memory.story_size = 0
-    memory.writes = {}
     memory.dynamic_size = 0
     memory.static_base = 0
+    pages = {}
     invalidate_cache()
     collectgarbage("collect")
 end
@@ -263,39 +322,29 @@ function memory.get_string_offset()
     return memory.read_word(memory.HDR_STRING_OFF) * 8
 end
 
--- Get a snapshot of modified bytes (for save)
--- Returns the writes table and original values from PSRAM
+-- Get a snapshot of dynamic memory (for undo)
 function memory.get_dynamic_snapshot()
-    -- We need to save ALL dynamic memory state
-    -- Read original from PSRAM and apply writes
+    -- the pages are strings, which never change, so copying the list is enough
     local snapshot = {}
-
-    -- Save all writes
-    for addr, val in pairs(memory.writes) do
-        snapshot[addr] = val
+    for i = 1, memory.page_count() do
+        snapshot[i] = pages[i]
     end
-
-    -- Also need to know the dynamic size
-    snapshot._size = memory.dynamic_size
-
     return snapshot
 end
 
 -- Restore dynamic memory from snapshot
 function memory.restore_dynamic(snapshot)
-    memory.writes = {}
-    for addr, val in pairs(snapshot) do
-        if addr ~= "_size" then
-            memory.writes[addr] = val
-        end
+    for i = 1, memory.page_count() do
+        pages[i] = snapshot[i] or false
     end
-    invalidate_cache()
 end
 
 -- Reset dynamic memory to original state (for restart)
 function memory.reset_dynamic()
-    memory.writes = {}
-    invalidate_cache()
+    pages = {}
+    for i = 1, memory.page_count() do
+        pages[i] = false
+    end
 end
 
 -- Pack an address for routine calls (version-dependent)
