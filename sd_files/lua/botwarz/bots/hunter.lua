@@ -3,6 +3,7 @@
 
 bot.name = "Hunter"
 bot.color = colors.fromRGB(255, 128, 0)  -- Orange
+bot.shape = "dart"
 
 local target_dist = nil
 local target_ang = nil

@@ -3,6 +3,7 @@
 
 bot.name = "Spinner"
 bot.color = colors.fromRGB(0, 255, 128)  -- Cyan-green
+bot.shape = "saucer"
 
 local spin_dir = 1
 local fire_cooldown = 0

@@ -1,16 +1,10 @@
--- BotWarz Screens Module
--- Menu, selection, help, and results screens
+-- BotWarz menu, bot selection and help screens
 
 local M = {}
 
--- Module-local references (set via init)
 local config = nil
 local render = nil
-local state = nil  -- shared game state
-
--- =============================================================================
--- INITIALIZATION
--- =============================================================================
+local state = nil
 
 function M.init(cfg, rnd, game_state)
     config = cfg
@@ -18,42 +12,94 @@ function M.init(cfg, rnd, game_state)
     state = game_state
 end
 
--- =============================================================================
--- HELP SCREEN
--- =============================================================================
-
-function M.show_help()
-    term.clear()
-    draw.text(config.SCREEN_WIDTH / 2, 20, "HOW TO PLAY", colors.cyan, config.COLOR_BG, draw.align_center)
-
-    local help_text = {
-        "BotWarz is a battle game where",
-        "Lua-scripted bots fight each other.",
-        "",
-        "Bot scripts go in: botwarz/bots/",
-        "",
-        "Bot API functions:",
-        "  bot.drive(speed)  - Set speed 0-5",
-        "  bot.turn(deg)     - Turn relative",
-        "  bot.turnTo(ang)   - Turn to angle",
-        "  bot.scan(arc)     - Scan for enemies",
-        "  bot.fire()        - Fire cannon",
-        "  bot.getPosition() - Get x, y",
-        "  bot.getHeading()  - Get angle",
-        "",
-        "Press any key to return..."
-    }
-
-    for i, line in ipairs(help_text) do
-        draw.text(10, 35 + i * 12, line, config.COLOR_TEXT, config.COLOR_BG)
+local function draw_avatars()
+    local pts = {}
+    for i, name in ipairs(config.SHAPE_NAMES) do
+        local shape = config.SHAPES[name]
+        local cx = 60 + ((i - 1) % 3) * 100
+        local cy = 150 + ((i - 1) // 3) * 90
+        local color = (i % 2 == 1) and config.COLOR_BOT1 or config.COLOR_BOT2
+        for k = 1, #shape, 2 do
+            pts[k], pts[k + 1] = cx + shape[k] * 2, cy + shape[k + 1] * 2
+        end
+        -- draw.polygon goes by the table's length, and the outlines differ in theirs
+        for k = #pts, #shape + 1, -1 do pts[k] = nil end
+        draw.polygon(pts, color)
+        draw.line(cx, cy - 6, cx, cy - config.BARREL_LENGTH * 2, color)
+        draw.text(cx, cy + 30, name, config.COLOR_TEXT, config.COLOR_BG, draw.align_center)
     end
-
-    keys.wait()
 end
 
--- =============================================================================
--- MENU SCREEN
--- =============================================================================
+local function help_pages()
+    return {
+        {
+            title = "HOW TO PLAY",
+            "BotWarz is a battle game where",
+            "Lua-scripted bots fight each other.",
+            "",
+            "A bot is a script in lua/botwarz/bots/",
+            "that sets bot.name and defines bot.tick(),",
+            "which is run 20 times a second.",
+            "",
+            "During a match:",
+            "  S    change how scans are shown",
+            "  ESC  leave the match",
+            "",
+            "The bars at the top show each bot's health.",
+            "ERR marks a bot whose script has failed;",
+            "lua/botwarz/debug.log says how.",
+            "",
+            "The whole API is described in lua/botwarz.md",
+        },
+        {
+            title = "BOT API",
+            "bot.drive(speed)        -2 to 5",
+            "bot.turn(degrees)       10 a tick at most",
+            "bot.turnTo(angle)       0 is up, clockwise",
+            "bot.stop()",
+            "bot.scan(arc)           ahead; gives distance,",
+            "bot.scanAt(angle, arc)    angle, heading, speed",
+            "bot.detectShot()        nearest incoming shot",
+            "bot.wallDistance(angle)",
+            "bot.fire()     bot.fireAt(angle)",
+            "bot.missile()  bot.missileAt(angle)",
+            "bot.canFire()  bot.canMissile()",
+            "bot.getPosition()  bot.getHeading()",
+            "bot.getHealth()    bot.getEnergy()",
+            "",
+            "Handlers a bot may define:",
+            "bot.init()  bot.onWall()",
+            "bot.onHit(direction, damage)",
+            "bot.onCollision(direction)",
+            "bot.onScanned(direction)",
+            "bot.onShotHit(name, damage)  bot.onKill(name)",
+        },
+        {
+            title = "AVATARS",
+            avatars = true,
+            "A bot picks its outline by name:",
+            "",
+            "    bot.shape = \"tank\"",
+        },
+    }
+end
+
+function M.show_help()
+    local pages = help_pages()
+    for n, page in ipairs(pages) do
+        term.clear()
+        draw.text(config.SCREEN_WIDTH / 2, 20, page.title, colors.cyan, config.COLOR_BG, draw.align_center)
+        for i, line in ipairs(page) do
+            draw.text(10, 35 + i * 12, line, config.COLOR_TEXT, config.COLOR_BG)
+        end
+        if page.avatars then draw_avatars() end
+        local prompt = n < #pages and "Any key: next page   ESC: menu" or "Press any key to return..."
+        draw.text(config.SCREEN_WIDTH / 2, config.SCREEN_HEIGHT - 14, prompt, config.COLOR_DIM_TEXT, config.COLOR_BG, draw.align_center)
+
+        local _, _, code = keys.wait(true)
+        if code == keys.esc then return end
+    end
+end
 
 function M.draw_menu()
     term.clear()
@@ -85,14 +131,13 @@ function M.menu_input()
             M.draw_menu()
         elseif code == keys.enter then
             if state.menu_selection == 1 then
-                -- Go to bot selection
                 state.available_bots = state.scan_bot_files()
                 if #state.available_bots < 2 then
                     term.clear()
                     draw.text(config.SCREEN_WIDTH/2, 100, "Need at least 2 bot files", colors.red, config.COLOR_BG, draw.align_center)
                     draw.text(config.SCREEN_WIDTH/2, 130, "in botwarz/bots/", config.COLOR_TEXT, config.COLOR_BG, draw.align_center)
                     draw.text(config.SCREEN_WIDTH/2, 180, "Press any key...", config.COLOR_DIM_TEXT, config.COLOR_BG, draw.align_center)
-                    keys.wait()
+                    keys.wait(true)
                     M.draw_menu()
                 else
                     state.game_state = "select"
@@ -112,37 +157,29 @@ function M.menu_input()
     end
 end
 
--- =============================================================================
--- BOT SELECTION SCREEN
--- =============================================================================
-
 function M.draw_select_screen()
     term.clear()
 
     draw.text(config.SCREEN_WIDTH / 2, 20, "SELECT BOTS", colors.cyan, config.COLOR_BG, draw.align_center)
 
-    -- Slot 1
     local color1 = (state.select_slot == 1) and colors.yellow or config.COLOR_TEXT
     draw.text(20, 50, "Bot 1:", color1, config.COLOR_BG)
     local bot1_name = state.available_bots[state.selected_bots[1]] or "???"
     draw.text(80, 50, "< " .. bot1_name .. " >", config.COLOR_BOT1, config.COLOR_BG)
 
-    -- Slot 2
     local color2 = (state.select_slot == 2) and colors.yellow or config.COLOR_TEXT
     draw.text(20, 80, "Bot 2:", color2, config.COLOR_BG)
     local bot2_name = state.available_bots[state.selected_bots[2]] or "???"
     draw.text(80, 80, "< " .. bot2_name .. " >", config.COLOR_BOT2, config.COLOR_BG)
 
-    -- Instructions
     draw.text(config.SCREEN_WIDTH / 2, 130, "UP/DOWN: Select slot", config.COLOR_DIM_TEXT, config.COLOR_BG, draw.align_center)
     draw.text(config.SCREEN_WIDTH / 2, 150, "LEFT/RIGHT: Change bot", config.COLOR_DIM_TEXT, config.COLOR_BG, draw.align_center)
     draw.text(config.SCREEN_WIDTH / 2, 170, "ENTER: Start match", config.COLOR_DIM_TEXT, config.COLOR_BG, draw.align_center)
     draw.text(config.SCREEN_WIDTH / 2, 190, "ESC: Back to menu", config.COLOR_DIM_TEXT, config.COLOR_BG, draw.align_center)
 
-    -- Show available bots list
     draw.text(20, 220, "Available bots:", config.COLOR_TEXT, config.COLOR_BG)
     local y = 240
-    for i, name in ipairs(state.available_bots) do
+    for _, name in ipairs(state.available_bots) do
         if y < config.SCREEN_HEIGHT - 30 then
             draw.text(30, y, name, config.COLOR_DIM_TEXT, config.COLOR_BG)
             y = y + 15
@@ -175,32 +212,11 @@ function M.select_input()
             end
             M.draw_select_screen()
         elseif code == keys.enter then
-            -- Start match with selected bots
-            state.game_state = "playing"
             state.init_match()
         elseif code == keys.esc then
             state.game_state = "menu"
             M.draw_menu()
         end
-    end
-end
-
--- =============================================================================
--- RESULTS SCREEN
--- =============================================================================
-
-function M.draw_results()
-    term.clear()
-    draw.text(config.SCREEN_WIDTH / 2, 80, "MATCH OVER", colors.cyan, config.COLOR_BG, draw.align_center)
-    draw.text(config.SCREEN_WIDTH / 2, 120, state.winner_name .. " WINS!", colors.yellow, config.COLOR_BG, draw.align_center)
-    draw.text(config.SCREEN_WIDTH / 2, 200, "Press any key...", config.COLOR_TEXT, config.COLOR_BG, draw.align_center)
-end
-
-function M.results_input()
-    local key_state = keys.poll()
-    if key_state == keys.states.pressed then
-        state.game_state = "menu"
-        M.draw_menu()
     end
 end
 

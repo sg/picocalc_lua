@@ -3,6 +3,7 @@
 
 bot.name = "Camper"
 bot.color = colors.fromRGB(128, 128, 255)  -- Light blue
+bot.shape = "tank"
 
 local settled = false
 local scan_angle = 0

@@ -1,26 +1,13 @@
--- BotWarz Bot Module
--- Bot sandbox, loading, and execution
+-- BotWarz bot scripts: the sandbox and API a script sees, loading it, and running its handlers
 
 local M = {}
 
--- Module-local references (set via init)
 local config = nil
 local render = nil
-local state = nil  -- shared game state with bots, projectiles, log, spawn_projectile
+local state = nil
 
--- Instruction counter for limiting bot execution
-local instruction_count = 0
-
-local function instruction_hook()
-    instruction_count = instruction_count + 1
-    if instruction_count > config.BOT_INSTRUCTION_LIMIT then
-        error("Instruction limit exceeded")
-    end
-end
-
--- =============================================================================
--- INITIALIZATION
--- =============================================================================
+local sin, cos, sqrt, asin, abs, huge = math.sin, math.cos, math.sqrt, math.asin, math.abs, math.huge
+local RAD = math.pi / 180
 
 function M.init(cfg, rnd, game_state)
     config = cfg
@@ -28,237 +15,247 @@ function M.init(cfg, rnd, game_state)
     state = game_state
 end
 
--- =============================================================================
--- BOT SANDBOX
--- =============================================================================
+-- inf and nan are numbers too, and one of them in a heading or a coordinate would stop the game
+local function finite(v)
+    return type(v) == "number" and v - v == 0
+end
 
--- Create a restricted environment for bot scripts
-function M.create_bot_sandbox(bot_state)
-    -- The bot API object that scripts interact with
+local guarded_call
+
+-- The allowance can run out in the few instructions after a script has returned, where nothing would catch the error.
+local function over_limit()
+    if debug.getinfo(2, "f").func ~= guarded_call then
+        error("instruction limit exceeded", 0)
+    end
+end
+
+-- The count hook fires once, when the allowance is used up, so a script within it pays nothing for the limit.
+function guarded_call(limit, fn, a1, a2)
+    debug.sethook(over_limit, "", limit)
+    local ok, err = pcall(fn, a1, a2)
+    debug.sethook()
+    return ok, err
+end
+
+local function report(b, what, err)
+    local msg = what .. ": " .. (tostring(err):gsub("^[^:]*/", ""))
+    -- a script that fails usually fails the same way every tick
+    if b.script_error ~= msg then
+        b.script_error = msg
+        state.error_text = (b.name .. " " .. msg):sub(1, 52)
+        state.error_tick = state.game_tick
+        state.log_error(b.name .. " " .. msg)
+    end
+end
+
+function M.create_bot_sandbox(b)
     local bot = {
         name = "Unnamed",
         color = nil,
+        shape = nil,
+        MAX_SPEED = config.BOT_MAX_SPEED,
+        MAX_REVERSE = config.BOT_MAX_REVERSE,
+        TURN_RATE = config.BOT_TURN_RATE,
+        RADIUS = config.BOT_RADIUS,
+        SCAN_RANGE = config.BOT_SCAN_RANGE,
+        CANNON_SPEED = config.CANNON_SPEED,
+        MISSILE_SPEED = config.MISSILE_SPEED,
     }
 
-    -- Movement commands
+    -- What a script asks for with these is carried out once a tick, after its tick() has run, so a
+    -- handler that runs between ticks adds to the same turn allowance instead of getting one of its own.
     function bot.drive(speed)
-        if type(speed) ~= "number" then return end
-        bot_state.pending_speed = render.clamp(speed, 0, config.BOT_MAX_SPEED)
+        if not finite(speed) then return end
+        b.pending_speed = render.clamp(speed, -config.BOT_MAX_REVERSE, config.BOT_MAX_SPEED)
     end
 
     function bot.turn(degrees)
-        if type(degrees) ~= "number" then return end
-        bot_state.pending_turn = bot_state.pending_turn + degrees
+        if not finite(degrees) then return end
+        b.pending_turn = b.pending_turn + degrees
     end
 
     function bot.turnTo(angle)
-        if type(angle) ~= "number" then return end
-        local current = bot_state.heading
-        local target = render.normalize_angle(angle)
-        local diff = target - current
-        if diff > 180 then diff = diff - 360 end
-        if diff < -180 then diff = diff + 360 end
-        bot_state.pending_turn = bot_state.pending_turn + diff
+        if not finite(angle) then return end
+        b.pending_turn = render.angle_diff(b.heading, angle)
     end
 
     function bot.stop()
-        bot_state.pending_speed = 0
+        b.pending_speed = 0
     end
 
-    -- Sensing commands
-    function bot.scan(arc)
-        if type(arc) ~= "number" then return nil, nil end
+    local function scan(angle, arc)
+        if b.energy < config.BOT_SCAN_COST then return nil end
+        b.energy = b.energy - config.BOT_SCAN_COST
         arc = render.clamp(arc, 1, 90)
-        if bot_state.energy < config.BOT_SCAN_COST then
-            return nil, nil
+        angle = render.normalize_angle(angle)
+
+        local radius, range = config.BOT_RADIUS, config.BOT_SCAN_RANGE
+        local found, found_dist
+        local bots = state.bots
+        for i = 1, #bots do
+            local other = bots[i]
+            if other ~= b and other.health > 0 then
+                local dist = render.distance(b.x, b.y, other.x, other.y)
+                if dist - radius <= range and (not found or dist < found_dist) then
+                    -- a bot is seen when any of it is inside the arc, which is what the arc drawn on screen shows
+                    local seen = dist <= radius
+                    if not seen then
+                        local off = abs(render.angle_diff(angle, render.angle_to(b.x, b.y, other.x, other.y)))
+                        seen = off <= arc / 2 + asin(radius / dist) / RAD
+                    end
+                    if seen then found, found_dist = other, dist end
+                end
+            end
         end
-        bot_state.energy = bot_state.energy - config.BOT_SCAN_COST
-        return bot.scanAt(bot_state.heading, arc)
+
+        -- of several scans in a tick the screen shows one, and that is one which found something if any did
+        if b.scan_tick ~= state.game_tick or not b.scan_hit then
+            b.scan_tick, b.scan_ang, b.scan_arc, b.scan_hit = state.game_tick, angle, arc, found
+        end
+        if not found then return nil end
+
+        local bearing = render.angle_to(b.x, b.y, found.x, found.y)
+        found.scanned_from = render.normalize_angle(bearing + 180)
+        if state.logging then
+            state.log("%s scan(%.0f, arc=%.0f): found %s at dist=%.0f ang=%.0f", b.name, angle, arc, found.name, found_dist, bearing)
+        end
+        return found_dist, bearing, found.heading, found.speed
+    end
+
+    function bot.scan(arc)
+        if not finite(arc) then return nil end
+        return scan(b.heading, arc)
     end
 
     function bot.scanAt(angle, arc)
-        if type(angle) ~= "number" or type(arc) ~= "number" then return nil, nil end
-        arc = render.clamp(arc, 1, 90)
-        angle = render.normalize_angle(angle)
+        if not finite(angle) or not finite(arc) then return nil end
+        return scan(angle, arc)
+    end
 
-        local owner_idx = 1
-        for i, b in ipairs(state.bots) do
-            if b == bot_state then owner_idx = i break end
-        end
-        local bot_name = bot_state.name or ("Bot" .. owner_idx)
-
-        local closest_dist = nil
-        local closest_angle = nil
-
-        for i, other in ipairs(state.bots) do
-            if other ~= bot_state and other.health > 0 then
-                local dist = render.distance(bot_state.x, bot_state.y, other.x, other.y)
-                if dist <= config.BOT_SCAN_RANGE then
-                    local ang = render.angle_to(bot_state.x, bot_state.y, other.x, other.y)
-                    local diff = ang - angle
-                    if diff > 180 then diff = diff - 360 end
-                    if diff < -180 then diff = diff + 360 end
-                    if math.abs(diff) <= arc / 2 then
-                        if closest_dist == nil or dist < closest_dist then
-                            closest_dist = dist
-                            closest_angle = ang
-                        end
-                    end
+    -- the nearest enemy shot within scan range that is closing on this bot
+    function bot.detectShot()
+        if b.energy < config.BOT_SCAN_COST then return nil end
+        b.energy = b.energy - config.BOT_SCAN_COST
+        local best, best_d2 = nil, config.BOT_SCAN_RANGE * config.BOT_SCAN_RANGE
+        local shots = state.projectiles
+        for i = 1, #shots do
+            local p = shots[i]
+            if p.active and p.owner ~= b.index then
+                local dx, dy = p.x - b.x, p.y - b.y
+                local d2 = dx * dx + dy * dy
+                if d2 <= best_d2 and dx * p.vx + dy * p.vy < 0 then
+                    best, best_d2 = p, d2
                 end
             end
         end
-
-        if closest_dist then
-            state.log(string.format("%s scanAt(%.0f, arc=%d): FOUND at dist=%.0f ang=%.0f",
-                bot_name, angle, arc, closest_dist, closest_angle))
-        end
-
-        return closest_dist, closest_angle
+        if not best then return nil end
+        return sqrt(best_d2), render.angle_to(b.x, b.y, best.x, best.y), best.heading,
+            best.ptype == config.PROJ_TYPE_MISSILE and "missile" or "cannon"
     end
 
-    -- State queries
-    function bot.getHeading() return bot_state.heading end
-    function bot.getPosition() return bot_state.x, bot_state.y end
-    function bot.getHealth() return bot_state.health end
-    function bot.getEnergy() return bot_state.energy end
-    function bot.getAmmo() return bot_state.ammo end
-    function bot.getMissiles() return bot_state.missiles end
-    function bot.getSpeed() return bot_state.speed end
+    -- from the bot's centre, which stops RADIUS short of the wall
+    function bot.wallDistance(angle)
+        if angle == nil then
+            angle = b.heading
+        elseif not finite(angle) then
+            return 0
+        end
+        local dx, dy = sin(angle * RAD), -cos(angle * RAD)
+        local t = huge
+        if dx > 1e-9 then t = (config.ARENA_WIDTH - b.x) / dx elseif dx < -1e-9 then t = -b.x / dx end
+        if dy > 1e-9 then
+            t = math.min(t, (config.ARENA_HEIGHT - b.y) / dy)
+        elseif dy < -1e-9 then
+            t = math.min(t, -b.y / dy)
+        end
+        return t
+    end
+
+    function bot.getHeading() return b.heading end
+    function bot.getPosition() return b.x, b.y end
+    function bot.getHealth() return b.health end
+    function bot.getEnergy() return b.energy end
+    function bot.getAmmo() return b.ammo end
+    function bot.getMissiles() return b.missiles end
+    function bot.getSpeed() return b.speed end
+    function bot.getAim() return b.aim or b.heading end
+    function bot.getCooldown() return b.cannon_cooldown, b.missile_cooldown end
     function bot.getArenaSize() return config.ARENA_WIDTH, config.ARENA_HEIGHT end
     function bot.getTick() return state.game_tick end
 
-    -- Utility functions
     function bot.angleTo(x, y)
-        if type(x) ~= "number" or type(y) ~= "number" then return 0 end
-        return render.angle_to(bot_state.x, bot_state.y, x, y)
+        if not finite(x) or not finite(y) then return 0 end
+        return render.angle_to(b.x, b.y, x, y)
     end
 
     function bot.distanceTo(x, y)
-        if type(x) ~= "number" or type(y) ~= "number" then return 0 end
-        return render.distance(bot_state.x, bot_state.y, x, y)
+        if not finite(x) or not finite(y) then return 0 end
+        return render.distance(b.x, b.y, x, y)
     end
 
-    -- Combat commands
-    function bot.fire()
-        bot.fireAt(bot_state.heading)
+    function bot.angleDiff(from, to)
+        if not finite(from) or not finite(to) then return 0 end
+        return render.angle_diff(from, to)
     end
 
-    function bot.fireAt(angle)
-        local owner_idx = 1
-        for i, b in ipairs(state.bots) do
-            if b == bot_state then owner_idx = i break end
-        end
-        local bot_name = bot_state.name or ("Bot" .. owner_idx)
-
-        if type(angle) ~= "number" then
-            state.log(string.format("%s fireAt: FAIL - angle not a number", bot_name))
-            return false
-        end
-        if bot_state.ammo <= 0 then
-            state.log(string.format("%s fireAt: FAIL - no ammo (ammo=%d)", bot_name, bot_state.ammo))
-            return false
-        end
-        if bot_state.cannon_cooldown > 0 then
-            state.log(string.format("%s fireAt: FAIL - cooldown active (cd=%d)", bot_name, bot_state.cannon_cooldown))
-            return false
-        end
-        if bot_state.energy < config.CANNON_ENERGY then
-            state.log(string.format("%s fireAt: FAIL - low energy (energy=%d need=%d)", bot_name, bot_state.energy, config.CANNON_ENERGY))
-            return false
-        end
-
-        angle = render.normalize_angle(angle)
-        local rad = render.deg_to_rad(angle)
-        local spawn_x = bot_state.x + math.sin(rad) * 16
-        local spawn_y = bot_state.y - math.cos(rad) * 16
-
-        if state.spawn_projectile(spawn_x, spawn_y, angle, config.CANNON_SPEED, config.PROJ_TYPE_CANNON, owner_idx, bot_state.color) then
-            bot_state.ammo = bot_state.ammo - 1
-            bot_state.cannon_cooldown = config.CANNON_COOLDOWN
-            bot_state.energy = bot_state.energy - config.CANNON_ENERGY
-            state.log(string.format("%s fireAt: SUCCESS at angle %.0f from (%.0f,%.0f)", bot_name, angle, spawn_x, spawn_y))
-            sound.playPitch(0, 0.8, sound.drums.tom)
-            return true
-        end
-        state.log(string.format("%s fireAt: FAIL - projectile pool exhausted", bot_name))
-        return false
-    end
-
-    function bot.missile()
-        bot.missileAt(bot_state.heading)
-    end
-
-    function bot.missileAt(angle)
-        if type(angle) ~= "number" then return false end
-        if bot_state.missiles <= 0 then return false end
-        if bot_state.missile_cooldown > 0 then return false end
-        if bot_state.energy < config.MISSILE_ENERGY then return false end
-
-        angle = render.normalize_angle(angle)
-        local rad = render.deg_to_rad(angle)
-        local spawn_x = bot_state.x + math.sin(rad) * 16
-        local spawn_y = bot_state.y - math.cos(rad) * 16
-
-        local owner_idx = 1
-        for i, b in ipairs(state.bots) do
-            if b == bot_state then owner_idx = i break end
-        end
-
-        if state.spawn_projectile(spawn_x, spawn_y, angle, config.MISSILE_SPEED, config.PROJ_TYPE_MISSILE, owner_idx, bot_state.color) then
-            bot_state.missiles = bot_state.missiles - 1
-            bot_state.missile_cooldown = config.MISSILE_COOLDOWN
-            bot_state.energy = bot_state.energy - config.MISSILE_ENERGY
-            sound.playPitch(0, 0.5, sound.drums.kick1)
-            return true
-        end
-        return false
+    local function launch(angle, ptype, speed)
+        local dx, dy = sin(angle * RAD), -cos(angle * RAD)
+        local reach = config.BARREL_LENGTH
+        return state.spawn_projectile(b.x + dx * reach, b.y + dy * reach, angle, speed, ptype, b.index, b.color)
     end
 
     function bot.canFire()
-        local can = bot_state.ammo > 0 and bot_state.cannon_cooldown == 0 and bot_state.energy >= config.CANNON_ENERGY
-        if not can then
-            local reason = ""
-            if bot_state.ammo <= 0 then reason = "no_ammo"
-            elseif bot_state.cannon_cooldown > 0 then reason = "cooldown"
-            else reason = "low_energy" end
-            if bot_state.last_canfire_fail ~= reason then
-                bot_state.last_canfire_fail = reason
-                local owner_idx = 1
-                for i, b in ipairs(state.bots) do if b == bot_state then owner_idx = i break end end
-                local bot_name = bot_state.name or ("Bot" .. owner_idx)
-                if reason == "no_ammo" then
-                    state.log(string.format("%s canFire: NO - out of ammo", bot_name))
-                elseif reason == "cooldown" then
-                    state.log(string.format("%s canFire: NO - cooldown (%d ticks)", bot_name, bot_state.cannon_cooldown))
-                else
-                    state.log(string.format("%s canFire: NO - low energy (%d/%d)", bot_name, bot_state.energy, config.CANNON_ENERGY))
-                end
-            end
-        else
-            bot_state.last_canfire_fail = nil
-        end
-        return can
+        return b.ammo > 0 and b.cannon_cooldown == 0 and b.energy >= config.CANNON_ENERGY
     end
 
     function bot.canMissile()
-        local can = bot_state.missiles > 0 and bot_state.missile_cooldown == 0 and bot_state.energy >= config.MISSILE_ENERGY
-        if not can and bot_state.last_canmissile_fail ~= true then
-            bot_state.last_canmissile_fail = true
-            local owner_idx = 1
-            for i, b in ipairs(state.bots) do if b == bot_state then owner_idx = i break end end
-            local bot_name = bot_state.name or ("Bot" .. owner_idx)
-            local reason = ""
-            if bot_state.missiles <= 0 then reason = "no missiles"
-            elseif bot_state.missile_cooldown > 0 then reason = "cooldown"
-            else reason = "low energy" end
-            state.log(string.format("%s canMissile: NO - %s", bot_name, reason))
-        elseif can then
-            bot_state.last_canmissile_fail = nil
-        end
-        return can
+        return b.missiles > 0 and b.missile_cooldown == 0 and b.energy >= config.MISSILE_ENERGY
     end
 
-    -- Create the sandbox environment
+    local function fire_cannon(angle)
+        if not bot.canFire() or not launch(angle, config.PROJ_TYPE_CANNON, config.CANNON_SPEED) then return false end
+        b.ammo = b.ammo - 1
+        b.cannon_cooldown = config.CANNON_COOLDOWN
+        b.energy = b.energy - config.CANNON_ENERGY
+        sound.playPitch(0, 0.8, sound.drums.tom)
+        if state.logging then state.log("%s fires at %.0f", b.name, angle) end
+        return true
+    end
+
+    local function fire_missile(angle)
+        if not bot.canMissile() or not launch(angle, config.PROJ_TYPE_MISSILE, config.MISSILE_SPEED) then return false end
+        b.missiles = b.missiles - 1
+        b.missile_cooldown = config.MISSILE_COOLDOWN
+        b.energy = b.energy - config.MISSILE_ENERGY
+        sound.playPitch(0, 0.5, sound.drums.kick1)
+        if state.logging then state.log("%s launches a missile at %.0f", b.name, angle) end
+        return true
+    end
+
+    -- The gun points wherever the bot last aimed: straight ahead, turning with the bot, after fire() or
+    -- missile(), and at a fixed bearing after fireAt() or missileAt(), even when the shot was not ready.
+    function bot.fire()
+        b.aim = nil
+        return fire_cannon(b.heading)
+    end
+
+    function bot.fireAt(angle)
+        if not finite(angle) then return false end
+        b.aim = render.normalize_angle(angle)
+        return fire_cannon(b.aim)
+    end
+
+    function bot.missile()
+        b.aim = nil
+        return fire_missile(b.heading)
+    end
+
+    function bot.missileAt(angle)
+        if not finite(angle) then return false end
+        b.aim = render.normalize_angle(angle)
+        return fire_missile(b.aim)
+    end
+
     local sandbox = {
         bot = bot,
         math = math,
@@ -270,7 +267,15 @@ function M.create_bot_sandbox(bot_state)
         type = type,
         tostring = tostring,
         tonumber = tonumber,
-        print = print,
+        -- printing on the screen would write over the arena
+        print = function(...)
+            if not state.logging then return end
+            local parts = {}
+            for i = 1, select("#", ...) do
+                parts[i] = tostring((select(i, ...)))
+            end
+            state.log("%s: %s", b.name, table.concat(parts, " "))
+        end,
         colors = {
             fromRGB = colors.fromRGB,
             white = colors.white,
@@ -288,121 +293,80 @@ function M.create_bot_sandbox(bot_state)
     return sandbox, bot
 end
 
--- =============================================================================
--- BOT LOADING
--- =============================================================================
+local function handler(f)
+    return type(f) == "function" and f or nil
+end
 
-function M.load_bot_script(filename, bot_state)
+function M.load_bot_script(filename, b)
     local filepath = config.BOTS_DIR .. filename
 
     if not fs.exists(filepath) then
         return nil, "File not found: " .. filepath
     end
 
-    local sandbox, bot_api = M.create_bot_sandbox(bot_state)
+    local sandbox, api = M.create_bot_sandbox(b)
 
     local chunk, err = loadfile(filepath, "t", sandbox)
     if not chunk then
         return nil, "Load error: " .. tostring(err)
     end
 
-    instruction_count = 0
-    debug.sethook(instruction_hook, "", 100)
-
-    local ok, run_err = pcall(chunk)
-
-    debug.sethook()
+    local ok, run_err = guarded_call(config.BOT_LOAD_INSTRUCTION_LIMIT, chunk)
 
     if not ok then
         return nil, "Run error: " .. tostring(run_err)
     end
-
-    local script = {
-        name = bot_api.name or "Unnamed",
-        color = bot_api.color,
-        init = bot_api.init,
-        tick = bot_api.tick,
-        onHit = bot_api.onHit,
-        onWall = bot_api.onWall,
-        onCollision = bot_api.onCollision,
-        onKill = bot_api.onKill,
-    }
-
-    if type(script.tick) ~= "function" then
+    if type(api.tick) ~= "function" then
         return nil, "Bot must define bot.tick() function"
     end
 
-    return script, nil
+    local name = type(api.name) == "string" and api.name ~= "" and api.name or "Unnamed"
+    local color = api.color
+    if math.type(color) ~= "integer" or color < 0 or color > 0xFFFF then color = nil end
+
+    return {
+        name = name:sub(1, 12),
+        color = color,
+        shape = config.SHAPES[config.SHAPE_NAMES[api.shape] or api.shape],
+        init = handler(api.init),
+        tick = api.tick,
+        onHit = handler(api.onHit),
+        onWall = handler(api.onWall),
+        onCollision = handler(api.onCollision),
+        onKill = handler(api.onKill),
+        onScanned = handler(api.onScanned),
+        onShotHit = handler(api.onShotHit),
+    }
 end
 
--- =============================================================================
--- BOT EXECUTION
--- =============================================================================
-
-function M.execute_bot_tick(bot_state)
-    if not bot_state.script or not bot_state.script.tick then
-        return
-    end
-
-    bot_state.pending_turn = 0
-    bot_state.pending_speed = nil
-
-    instruction_count = 0
-    debug.sethook(instruction_hook, "", 50)
-
-    local ok, err = pcall(bot_state.script.tick)
-
-    debug.sethook()
-
-    if not ok then
-        bot_state.script_error = "tick error: " .. tostring(err)
-        state.log(string.format("ERROR: %s tick() failed: %s", bot_state.name or "Bot", tostring(err)))
-    end
-
-    if bot_state.pending_turn ~= 0 then
-        local turn = render.clamp(bot_state.pending_turn, -config.BOT_TURN_RATE, config.BOT_TURN_RATE)
-        bot_state.heading = render.normalize_angle(bot_state.heading + turn)
-    end
-    if bot_state.pending_speed ~= nil then
-        bot_state.speed = bot_state.pending_speed
-    end
+local function run(b, fn, what, a1, a2)
+    local ok, err = guarded_call(config.BOT_INSTRUCTION_LIMIT, fn, a1, a2)
+    if not ok then report(b, what, err) end
 end
 
-function M.execute_bot_event(bot_state, event_name, ...)
-    if not bot_state.script then return end
-    local handler = bot_state.script[event_name]
-    if type(handler) ~= "function" then return end
+function M.execute_bot_tick(b)
+    if not b.script then return end
+    run(b, b.script.tick, "tick")
 
-    bot_state.pending_turn = 0
-    bot_state.pending_speed = nil
-
-    instruction_count = 0
-    debug.sethook(instruction_hook, "", 50)
-
-    local ok, err = pcall(handler, ...)
-
-    debug.sethook()
-
-    if not ok then
-        bot_state.script_error = event_name .. " error: " .. tostring(err)
+    local rate = config.BOT_TURN_RATE
+    -- hit_wall is from the move before, so a bot pressing on a wall turns slowly until it stops pressing
+    if b.hit_wall then rate = rate * config.BOT_WALL_TURN_PENALTY end
+    local turn = render.clamp(b.pending_turn, -rate, rate)
+    if turn ~= 0 then
+        b.heading = render.normalize_angle(b.heading + turn)
     end
-
-    if bot_state.pending_turn ~= 0 then
-        local max_turn = config.BOT_TURN_RATE
-        if event_name == "onWall" then
-            max_turn = config.BOT_TURN_RATE * config.BOT_WALL_TURN_PENALTY
-        end
-        local turn = render.clamp(bot_state.pending_turn, -max_turn, max_turn)
-        bot_state.heading = render.normalize_angle(bot_state.heading + turn)
-    end
-    if bot_state.pending_speed ~= nil then
-        bot_state.speed = bot_state.pending_speed
+    b.pending_turn = 0
+    if b.pending_speed then
+        b.speed = b.pending_speed
+        b.pending_speed = nil
     end
 end
 
--- =============================================================================
--- BOT FILE SCANNING
--- =============================================================================
+function M.execute_bot_event(b, event_name, a1, a2)
+    if not b.script or b.health <= 0 then return end
+    local fn = b.script[event_name]
+    if fn then run(b, fn, event_name, a1, a2) end
+end
 
 function M.scan_bot_files()
     local available_bots = {}

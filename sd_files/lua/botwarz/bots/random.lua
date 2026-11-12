@@ -3,6 +3,7 @@
 
 bot.name = "Random"
 bot.color = colors.fromRGB(255, 255, 0)  -- Yellow
+bot.shape = "crab"
 
 local change_timer = 0
 local turn_amount = 0
