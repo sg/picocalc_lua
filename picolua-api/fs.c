@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -62,46 +63,35 @@ static int l_fs_close(lua_State* L) {
 	return 0;
 }
 
-//f_read - Read data from the file
-static int l_fs_read(lua_State* L) {
-	FIL* fp = checkfile(L);
-	UINT to_read = luaL_optinteger(L, 2, 1); 
-	char* buffer = malloc(to_read);
-	if (!buffer && to_read) return luaL_error(L, "not enough memory");
+static int push_read(lua_State* L, FIL* fp, UINT to_read) {
+	if (to_read >= INT32_MAX) return luaL_error(L, "not enough memory");
+
+	// a Lua buffer is collected for and freed on errors, which malloc is not; the extra byte is Lua's terminator
+	luaL_Buffer b;
+	char* buffer = luaL_buffinitsize(L, &b, (size_t)to_read + 1);
 	UINT read;
-	
+
 	FRESULT result = f_read(fp, buffer, to_read, &read);
-	if (result != FR_OK) { free(buffer); return luaL_error(L, fs_error_strings[result]); }
+	if (result != FR_OK) return luaL_error(L, fs_error_strings[result]);
 
 	if (read > 0) {
-		lua_pushlstring(L, buffer, read);
+		luaL_pushresultsize(&b, read);
 	} else {
 		lua_pushnil(L);
 	}
-
-	free(buffer);
 	return 1;
+}
+
+//f_read - Read data from the file
+static int l_fs_read(lua_State* L) {
+	FIL* fp = checkfile(L);
+	return push_read(L, fp, luaL_optinteger(L, 2, 1));
 }
 
 // read entire file into a string
 static int l_fs_readAll(lua_State* L) {
 	FIL* fp = checkfile(L);
-	UINT to_read = f_size(fp);
-	char* buffer = malloc(to_read);
-	if (!buffer && to_read) return luaL_error(L, "not enough memory");
-	UINT read;
-	
-	FRESULT result = f_read(fp, buffer, to_read, &read);
-	if (result != FR_OK) { free(buffer); return luaL_error(L, fs_error_strings[result]); }
-
-	if (read > 0) {
-		lua_pushlstring(L, buffer, read);
-	} else {
-		lua_pushnil(L);
-	}
-
-	free(buffer);
-	return 1;
+	return push_read(L, fp, f_size(fp));
 }
 
 // read until newline

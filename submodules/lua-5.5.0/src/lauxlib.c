@@ -490,6 +490,17 @@ static void *resizebox (lua_State *L, int idx, size_t newsize) {
     void *ud;
     lua_Alloc allocf = lua_getallocf(L, &ud);
     void *temp = allocf(ud, box->box, box->bsize, newsize);
+    if (l_unlikely(temp == NULL && newsize > 0)) {
+      /* picolua: a box gets no emergency collection as Lua's own
+         allocations do, so garbage alone could make this fail; the
+         second pass frees what the first finalized, such as the dead
+         boxes that sit between the holes it opened */
+      int pass;
+      for (pass = 0; temp == NULL && pass < 2; pass++) {
+        lua_gc(L, LUA_GCCOLLECT);
+        temp = allocf(ud, box->box, box->bsize, newsize);
+      }
+    }
     if (l_unlikely(temp == NULL && newsize > 0)) {  /* allocation error? */
       lua_pushliteral(L, "not enough memory");
       lua_error(L);  /* raise a memory error */

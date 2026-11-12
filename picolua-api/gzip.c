@@ -53,6 +53,12 @@ static int l_gzip_open(lua_State *L) {
     /* Allocate dictionary from C heap (not Lua heap) to avoid
        needing a single 32KB contiguous block in the Lua arena */
     gz->dict = malloc(GZIP_DICT_SIZE);
+    /* malloc gets no emergency collection from Lua, and garbage may hold the block this needs;
+       the second pass frees what the first finalized */
+    for (int pass = 0; !gz->dict && pass < 2; pass++) {
+        lua_gc(L, LUA_GCCOLLECT);
+        gz->dict = malloc(GZIP_DICT_SIZE);
+    }
     if (!gz->dict) {
         f_close(&gz->file);
         return luaL_error(L, "gzip: out of memory for dictionary");
@@ -108,11 +114,10 @@ static int l_gzip_read(lua_State *L) {
         return 1;
     }
 
-    /* Use luaL_Buffer so the decompressed data goes directly into the
-       Lua string being built — avoids malloc + lua_pushlstring double
-       allocation that can OOM on large files. */
+    /* The buffer becomes the Lua string without a copy; the extra byte
+       is the terminator Lua adds, so a full read is not reallocated. */
     luaL_Buffer b;
-    uint8_t *outbuf = (uint8_t *)luaL_buffinitsize(L, &b, (size_t)n);
+    uint8_t *outbuf = (uint8_t *)luaL_buffinitsize(L, &b, (size_t)n + 1);
 
     gz->uncomp.dest_start = outbuf;
     gz->uncomp.dest = outbuf;
