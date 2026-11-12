@@ -128,7 +128,25 @@ void luaE_shrinkCI (lua_State *L) {
 ** not much larger, does not report an error (to allow overflow
 ** handling to work).
 */
+#if defined(PICOLUA_CSTACK)
+/* picolua: the C-call count at which the real stack last ran low */
+LUAI_DDEF l_uint32 luaE_ccalllimit = LUAI_MAXCCALLS;
+#endif
+
+
 void luaE_checkcstack (lua_State *L) {
+#if defined(PICOLUA_CSTACK)
+  char *sp = picolua_cstackp();
+  if (sp >= picolua_cstack_soft)  /* an earlier overflow's limit is not this path's */
+    luaE_ccalllimit = LUAI_MAXCCALLS;
+  else if (sp < picolua_cstack_hard)
+    luaD_errerr(L);
+  else if (getCcalls(L) <= luaE_ccalllimit) {
+    luaE_ccalllimit = getCcalls(L);
+    luaG_runerror(L, "C stack overflow");
+  }
+  /* else deeper than where it was raised: that is its handling */
+#endif
   if (getCcalls(L) == LUAI_MAXCCALLS)
     luaG_runerror(L, "C stack overflow");
   else if (getCcalls(L) >= (LUAI_MAXCCALLS / 10 * 11))
@@ -138,7 +156,7 @@ void luaE_checkcstack (lua_State *L) {
 
 LUAI_FUNC void luaE_incCstack (lua_State *L) {
   L->nCcalls++;
-  if (l_unlikely(getCcalls(L) >= LUAI_MAXCCALLS))
+  if (l_unlikely(luaE_cstacklow(L)))
     luaE_checkcstack(L);
 }
 

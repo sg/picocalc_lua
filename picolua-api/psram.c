@@ -420,17 +420,12 @@ static int l_psram_read(lua_State* L) {
         len = alloc_size - offset;
     }
 
-    // Allocate temporary buffer in RAM
-    uint8_t* buf = malloc(len);
-    if (!buf) {
-        lua_pushnil(L);
-        lua_pushstring(L, "out of memory");
-        return 2;
-    }
-
-    psram_c_read(addr + offset, buf, len);
-    lua_pushlstring(L, (const char*)buf, len);
-    free(buf);
+    // a Lua buffer is collected for and freed on errors, which malloc is not; a larger one
+    // becomes the string itself, so it asks for the terminator Lua adds rather than be reallocated
+    luaL_Buffer b;
+    char* buf = luaL_buffinitsize(L, &b, len > (uint32_t)LUAL_BUFFERSIZE ? (size_t)len + 1 : len);
+    psram_c_read(addr + offset, (uint8_t*)buf, len);
+    luaL_pushresultsize(&b, len);
 
     return 1;
 }

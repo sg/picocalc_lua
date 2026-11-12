@@ -442,6 +442,22 @@ LUAI_FUNC CallInfo *luaE_extendCI (lua_State *L);
 LUAI_FUNC void luaE_shrinkCI (lua_State *L);
 LUAI_FUNC void luaE_checkcstack (lua_State *L);
 LUAI_FUNC void luaE_incCstack (lua_State *L);
+
+/*
+** picolua: the count of C calls says nothing of how much C stack is
+** really left, so the firmware gives two addresses: with the stack below
+** the first Lua raises a C stack overflow, and below the second there is
+** no room left even to report one.
+*/
+#if defined(PICOLUA_CSTACK)
+extern char *picolua_cstack_soft, *picolua_cstack_hard;
+LUAI_DDEC(l_uint32 luaE_ccalllimit;)
+#define picolua_cstackp()	((char *)__builtin_frame_address(0))
+#define luaE_cstacklow(L) \
+	(getCcalls(L) >= luaE_ccalllimit || picolua_cstackp() < picolua_cstack_soft)
+#else
+#define luaE_cstacklow(L)	(getCcalls(L) >= LUAI_MAXCCALLS)
+#endif
 LUAI_FUNC void luaE_warning (lua_State *L, const char *msg, int tocont);
 LUAI_FUNC void luaE_warnerror (lua_State *L, const char *where);
 LUAI_FUNC TStatus luaE_resetthread (lua_State *L, TStatus status);

@@ -382,7 +382,9 @@ static inline void should_scroll() {
 		ansi.x = 0;
 		ansi.y += 1;
 	}
-	if (ansi.y >= font.term_height) {
+	// ansi.y counts from the top of everything scrolled so far, so only its row within the viewport
+	// tells whether the cursor has run off the bottom; testing ansi.y itself moved the view to any row written to
+	if (ansi.y - ansi.scroll >= font.term_height) {
 		term_scroll(ansi.y - (font.term_height - 1));
 	}
 }
@@ -540,7 +542,8 @@ static void term_erase_input(int size) {
 
 // TODO: this should be less specialized
 static void term_draw_input(char* buffer, int size, int cursor) {
-	if (ansi.y + (size + ansi.x) / font.term_width >= font.term_height) term_scroll(ansi.y + (size + ansi.x) / font.term_width - (font.term_height-1));
+	int last_row = ansi.y + (size + ansi.x) / font.term_width;
+	if (last_row - ansi.scroll >= font.term_height) term_scroll(last_row - (font.term_height-1));
 	for (int i = 0; i < size + 1; i++) {
 		int col = ansi_len_to_col(i), row = ansi_len_to_row(i);
 		if (i < size) term_put_cell(col, row, ansi.fg, ansi.bg, buffer[i]);

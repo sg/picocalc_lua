@@ -6,6 +6,7 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 	- [`board`](#board)
 	- [`hasWifi`](#haswifi)
 	- [`freeMemory()`](#freememory)
+	- [`stackFree()`](#stackfree)
 	- [`totalMemory()`](#totalmemory)
 	- [`reset()`](#reset)
 	- [`bootsel()`](#bootsel)
@@ -198,6 +199,13 @@ Returns the amount of unused memory
 
 **Returns**
 1. `number` - Amount of memory in bytes
+
+## `stackFree()`
+Returns how close Lua's C stack has come to running out since boot. Lua raises `C stack overflow` when calls nest so deeply that less than about 4 KB would be left. Not present in firmware up to v0.6.6.
+
+**Returns**
+1. `number` - The least stack ever left unused, in bytes
+2. `number` - The size of the stack in bytes
 
 ## `totalMemory()`
 Returns the amount of total system memory
@@ -1604,6 +1612,8 @@ Read data from a PSRAM buffer
 **Returns**
 1. `string | nil` - The data read (clamped to allocation bounds), or nil on error
 2. `string` - Error message if failed
+
+A read too large for the Lua heap raises `not enough memory`, as any Lua allocation does, after garbage has been collected; firmware up to v0.6.6 returned nil and `out of memory` without collecting first.
 
 ## `size(handle)`
 Get the size of an allocation

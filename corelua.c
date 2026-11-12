@@ -12,6 +12,7 @@
 #include "picolua-api/sys.h"
 
 #include "picolua-api/modules.h"
+#include "cstack.h"
 
 #include <lua.h>
 #include <lualib.h>
@@ -25,6 +26,27 @@
 extern const char* GIT_DESC;
 lua_State *L;
 history_t term_history = {{0}, 0};
+
+// Lua stops nesting calls while this much stack is left, for the C a call can still reach (a TLS
+// handshake is the deepest known), and gives up reporting that once only the second amount is left
+#define CSTACK_SOFT_MARGIN 4096
+#define CSTACK_HARD_MARGIN 1536
+
+char *picolua_cstack_soft, *picolua_cstack_hard;
+
+static void __attribute__((noinline)) cstack_init() {
+	char* bottom = lua_cstack_bottom();
+	char* sp;
+	__asm volatile ("mov %0, sp" : "=r" (sp));
+	// short of the stack pointer by what memset itself may use
+	memset(bottom, LUA_CSTACK_PAINT, sp - 256 - bottom);
+	picolua_cstack_soft = bottom + CSTACK_SOFT_MARGIN;
+	picolua_cstack_hard = bottom + CSTACK_HARD_MARGIN;
+#if defined(__ARM_ARCH_8M_MAIN__)
+	// an overrun then faults at once instead of writing over the heap
+	__asm volatile ("msr msplim, %0" : : "r" (bottom));
+#endif
+}
 
 static void l_print (lua_State *L) {
 	int n = lua_gettop(L);
@@ -115,6 +137,7 @@ void lua_main() {
 	size_t len;
 	char ch;
 
+	cstack_init();
 	L = luaL_newstate();
 	// i keep fussing with this value but as low as 10 doesn't seem to give much or any performance downgrade
 	// lower makes interrupt more responsive

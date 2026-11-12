@@ -36,6 +36,9 @@ project(picolua)
 # a failed allocation returns NULL instead of halting the device, so Lua can
 # raise "not enough memory" and draw.enableBuffer can report false
 add_compile_definitions(PICO_MALLOC_PANIC=0)
+# Lua then measures the C stack it has left as well as counting its C calls;
+# set for every target because the executable compiles Lua's sources itself
+add_compile_definitions(PICOLUA_CSTACK=1)
 pico_sdk_init()
 
 add_subdirectory(submodules/lua-5.5.0/src)

@@ -18,15 +18,26 @@
 #include "../drivers/sound.h"
 #include "../drivers/lcd.h"
 #include "../corelua.h"
+#include "../cstack.h"
 
 extern const char* GIT_DESC;
 
 static int callback_reference = 0;
+
+// how little of Lua's C stack has ever been left unused, and its size
+static int l_stack_free(lua_State* L) {
+	const char* bottom = lua_cstack_bottom();
+	const char* p = bottom;
+	while (p < lua_cstack_top() && (unsigned char)*p == LUA_CSTACK_PAINT) p++;
+	lua_pushinteger(L, p - bottom);
+	lua_pushinteger(L, lua_cstack_top() - bottom);
+	return 2;
+}
 static repeating_timer_t sys_timer;
 
 uint32_t get_total_memory() {
-	extern char __StackLimit, __bss_end__;
-	return &__StackLimit  - &__bss_end__;
+	extern char __bss_end__;
+	return lua_cstack_bottom() - &__bss_end__;
 }
 
 uint32_t get_free_memory() {
@@ -225,6 +236,7 @@ int luaopen_sys(lua_State *L) {
 	static const luaL_Reg syslib_f [] = {
 		{"totalMemory", l_get_total_memory},
 		{"freeMemory", l_get_free_memory},
+		{"stackFree", l_stack_free},
 		{"reset", l_reset},
 		{"bootsel", l_bootsel},
 		{"setOutput", l_set_output},
