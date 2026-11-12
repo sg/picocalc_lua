@@ -252,7 +252,8 @@ The update process is designed for the PicoCalc's constrained memory (~200KB tot
 - The HTTP and JSON modules are unloaded after each use
 - Garbage collection runs aggressively between operations
 - The tar backup and extract stream in 1KB blocks and collect garbage after each, so the buffers fit a fragmented heap
-- Unpacking the `.tar.gz` needs one unbroken 32KB block for the gzip window, which is what a long-running session most often lacks; the updater tests for a 48KB block before it starts
+- On firmware up to v0.6.7, unpacking the `.tar.gz` needs one unbroken 32KB block for the gzip window, which is what a long-running session most often lacks: running programs leaves the free memory in ever smaller pieces, though there is as much of it. The updater tests for a 48KB block before it starts, and `tar` says to restart when the block cannot be had
+- Later firmware takes the window as eight 4KB blocks (`gzip.blockSize`), so the updater only tests that 64KB is free in all
 
 ## Restoring from Backup
 

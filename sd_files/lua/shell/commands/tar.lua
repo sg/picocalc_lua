@@ -259,15 +259,21 @@ local function open_archive(archive_fs)
     if not gzip then
       return nil, "gzip module not available (firmware update required)"
     end
-    -- the reader needs one unbroken 32 KB block, which garbage may be
-    -- holding; the second pass frees what the first finalized
+    -- garbage may be holding the memory the reader's window needs; the
+    -- second pass frees what the first finalized
     collectgarbage()
     collectgarbage()
     open = gzip.open
   end
   local ok, f = pcall(open, archive_fs)
   if not ok then
-    return nil, "Cannot open " .. archive_fs .. ": " .. tostring(f)
+    local why = tostring(f)
+    -- firmware up to v0.6.7 wants the 32 KB window in one piece, which a
+    -- session that has been in use for a while may not have left
+    if why:find("out of memory for dictionary", 1, true) then
+      why = "no unbroken 32 KB of memory left to unpack it with; restart and run this first"
+    end
+    return nil, "Cannot open " .. archive_fs .. ": " .. why
   end
   return f
 end

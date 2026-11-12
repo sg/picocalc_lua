@@ -42,9 +42,13 @@ local DEFAULT_CONFIG = {
   uf2_asset = "picolua-{board}-{tag}.uf2",
 }
 
--- unpacking needs one unbroken 32 KB block for the gzip window, and has
--- failed to get it when the largest block free beforehand was 33 KB or less
+-- on firmware up to v0.6.7 unpacking needs one unbroken 32 KB block for the
+-- gzip window, and has failed to get it when the largest block free
+-- beforehand was 33 KB or less
 local SPARE_BLOCK = 48 * 1024
+-- later firmware takes the window in blocks of gzip.blockSize, so that only
+-- the amount free matters
+local SPARE_TOTAL = 64 * 1024
 
 ------------------------------------------------------------
 -- HELPERS
@@ -76,6 +80,7 @@ local function memory_is_short()
   -- the second pass frees what the first finalized
   collectgarbage()
   collectgarbage()
+  if gzip and gzip.blockSize then return sys.freeMemory() < SPARE_TOTAL end
   local ok, block = pcall(string.rep, "\0", SPARE_BLOCK)
   block = nil
   collectgarbage()

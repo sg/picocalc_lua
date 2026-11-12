@@ -121,10 +121,19 @@ struct uzlib_uncomp {
 
 #include "tinf_compat.h"
 
+/* picolua: with UZLIB_DICT_CHUNK_BITS defined, dict_ring is not one block of dict_size bytes but a table
+   of pointers to blocks of 1 << UZLIB_DICT_CHUNK_BITS bytes, so that the window need not be found in one piece */
+#ifdef UZLIB_DICT_CHUNK_BITS
+#define TINF_DICT(d, i) \
+    (((unsigned char **)(d)->dict_ring)[(i) >> UZLIB_DICT_CHUNK_BITS][(i) & ((1u << UZLIB_DICT_CHUNK_BITS) - 1)])
+#else
+#define TINF_DICT(d, i) ((d)->dict_ring[i])
+#endif
+
 #define TINF_PUT(d, c) \
     { \
         *d->dest++ = c; \
-        if (d->dict_ring) { d->dict_ring[d->dict_idx++] = c; if (d->dict_idx == d->dict_size) d->dict_idx = 0; } \
+        if (d->dict_ring) { TINF_DICT(d, d->dict_idx) = c; if (++d->dict_idx == d->dict_size) d->dict_idx = 0; } \
     }
 
 unsigned char TINFCC uzlib_get_byte(TINF_DATA *d);

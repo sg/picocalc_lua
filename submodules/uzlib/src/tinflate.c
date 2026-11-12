@@ -474,7 +474,7 @@ static int tinf_inflate_block_data(TINF_DATA *d, TINF_TREE *lt, TINF_TREE *dt)
 
     /* copy next byte from dict substring */
     if (d->dict_ring) {
-        TINF_PUT(d, d->dict_ring[d->lzOff]);
+        TINF_PUT(d, TINF_DICT(d, d->lzOff));
         if ((unsigned)++d->lzOff == d->dict_size) {
             d->lzOff = 0;
         }

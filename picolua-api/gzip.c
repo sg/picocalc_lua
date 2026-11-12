@@ -12,16 +12,40 @@
 #define GZIP_READER    "GzipReader"
 #define GZIP_INBUF_SIZE 1024
 #define GZIP_DICT_SIZE  32768
+#define GZIP_CHUNK_SIZE (1 << UZLIB_DICT_CHUNK_BITS)
+#define GZIP_CHUNKS     (GZIP_DICT_SIZE / GZIP_CHUNK_SIZE)
 #define GZIP_SKIP_BUF   512
 
 typedef struct {
     FIL file;
     struct uzlib_uncomp uncomp;
-    uint8_t *dict;
+    uint8_t *dict[GZIP_CHUNKS];
     uint8_t inbuf[GZIP_INBUF_SIZE];
     bool finished;
     bool closed;
 } GzipReader;
+
+static void gzip_free_dict(GzipReader *gz) {
+    for (int i = 0; i < GZIP_CHUNKS; i++) {
+        free(gz->dict[i]);
+        gz->dict[i] = NULL;
+    }
+}
+
+/* The window is taken as GZIP_CHUNKS small blocks: a session that has been in use for a while often
+   has no 32 KB left in one piece, though several times that in all. */
+static bool gzip_alloc_dict(lua_State *L, GzipReader *gz) {
+    for (int pass = 0; pass < 3; pass++) {
+        int i = 0;
+        while (i < GZIP_CHUNKS && (gz->dict[i] || (gz->dict[i] = malloc(GZIP_CHUNK_SIZE)))) i++;
+        if (i == GZIP_CHUNKS) return true;
+        /* malloc gets no emergency collection from Lua, and garbage may hold what this needs;
+           the second pass frees what the first finalized */
+        if (pass < 2) lua_gc(L, LUA_GCCOLLECT);
+    }
+    gzip_free_dict(gz);
+    return false;
+}
 
 /* Source read callback for uzlib.
    Reads more compressed data from the FatFS file into inbuf. */
@@ -50,16 +74,7 @@ static int l_gzip_open(lua_State *L) {
         return luaL_error(L, "gzip: cannot open '%s'", path);
     }
 
-    /* Allocate dictionary from C heap (not Lua heap) to avoid
-       needing a single 32KB contiguous block in the Lua arena */
-    gz->dict = malloc(GZIP_DICT_SIZE);
-    /* malloc gets no emergency collection from Lua, and garbage may hold the block this needs;
-       the second pass frees what the first finalized */
-    for (int pass = 0; !gz->dict && pass < 2; pass++) {
-        lua_gc(L, LUA_GCCOLLECT);
-        gz->dict = malloc(GZIP_DICT_SIZE);
-    }
-    if (!gz->dict) {
+    if (!gzip_alloc_dict(L, gz)) {
         f_close(&gz->file);
         return luaL_error(L, "gzip: out of memory for dictionary");
     }
@@ -71,8 +86,7 @@ static int l_gzip_open(lua_State *L) {
     UINT n;
     res = f_read(&gz->file, gz->inbuf, GZIP_INBUF_SIZE, &n);
     if (res != FR_OK || n == 0) {
-        free(gz->dict);
-        gz->dict = NULL;
+        gzip_free_dict(gz);
         f_close(&gz->file);
         return luaL_error(L, "gzip: cannot read '%s'", path);
     }
@@ -82,8 +96,7 @@ static int l_gzip_open(lua_State *L) {
     /* Parse and validate gzip header */
     int hres = uzlib_gzip_parse_header(&gz->uncomp);
     if (hres != TINF_OK) {
-        free(gz->dict);
-        gz->dict = NULL;
+        gzip_free_dict(gz);
         f_close(&gz->file);
         return luaL_error(L, "gzip: invalid gzip header");
     }
@@ -191,10 +204,7 @@ static int l_gzip_seek(lua_State *L) {
 static void gzip_close_internal(GzipReader *gz) {
     if (gz->closed) return;
     f_close(&gz->file);
-    if (gz->dict) {
-        free(gz->dict);
-        gz->dict = NULL;
-    }
+    gzip_free_dict(gz);
     gz->closed = true;
 }
 
@@ -234,6 +244,9 @@ int luaopen_gzip(lua_State *L) {
 
     /* Create module table */
     luaL_newlib(L, gzip_funcs);
+    /* the largest single block a reader needs, for a script that wants to know before it starts */
+    lua_pushinteger(L, GZIP_CHUNK_SIZE);
+    lua_setfield(L, -2, "blockSize");
 
     /* Create GzipReader metatable */
     luaL_newmetatable(L, GZIP_READER);

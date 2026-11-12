@@ -176,6 +176,7 @@ This API has been in part influenced by the [CC:Tweaked](https://tweaked.cc/) AP
 	- [`freeAll()`](#freeall)
 	- [Constants](#constants-6)
 - [`gzip` - Gzip decompression](#gzip---gzip-decompression)
+	- [`blockSize`](#blocksize)
 	- [`gzip.open(path)`](#gzipopenpath)
 	- [`GzipReader:read(size)`](#gzipreaderreadsize)
 	- [`GzipReader:seek(whence, offset)`](#gzipreaderseekwhence-offset)
@@ -1696,7 +1697,10 @@ Free all PSRAM allocations
 
 The gzip module provides streaming decompression of gzip-compressed files (`.gz`). It exposes a `GzipReader` object that supports the same `:read(n)`, `:seek("cur", n)`, and `:close()` interface as `fs.open()` file handles, making it a drop-in replacement for reading compressed data.
 
-Uses the uzlib library (~1.6KB code) for DEFLATE decompression. Each open reader uses approximately 34KB of memory (32KB sliding window dictionary + decompressor state + 1KB input buffer).
+Uses the uzlib library (~1.6KB code) for DEFLATE decompression. Each open reader uses approximately 34KB of memory (32KB sliding window dictionary + decompressor state + 1KB input buffer). The window is taken as eight 4KB blocks, so opening a reader does not depend on 32KB being free in one piece; firmware up to v0.6.7 took it as one block, and `gzip.open` failed with `out of memory for dictionary` in a session whose free memory had been broken up.
+
+## `blockSize`
+The size in bytes of the largest single block of memory an open reader needs (4096). Not present in firmware up to v0.6.7, where it was 32768.
 
 ## `gzip.open(path)`
 Open a gzip-compressed file for streaming decompression
