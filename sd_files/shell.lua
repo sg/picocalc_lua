@@ -1457,8 +1457,8 @@ local builtin_commands = {
       -- firmware up to v0.6.6 has no stack of Lua's own to report on
       if sys.stackFree then
         local least, size = sys.stackFree()
-        term.write(c.cyan .. " Stack Free:  " .. c.white .. sh:format_size(least)
-          .. " least of " .. sh:format_size(size) .. "\n")
+        term.write(c.cyan .. " Stack Peak:  " .. c.white .. sh:format_size(size - least)
+          .. " of " .. sh:format_size(size) .. "\n")
       end
       term.write(c.cyan .. "    Battery:  " .. c.white .. sys.battery() .. " %\n")
 
