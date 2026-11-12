@@ -58,18 +58,18 @@ return {
 
 Runs the full update flow:
 
-1. Reads the current version from `/version.txt`
+1. Reads the SD card files' version from `/version.txt` and the running firmware's from `sys.version`
 2. Queries the forge for the latest tagged release
-3. Compares versions (semver: `vX.Y.Z`)
-4. If an update is available, asks what to install
-5. Checks that enough memory is free, and asks before going on if not
-6. Creates a backup archive
+3. Compares both versions with it (semver: `vX.Y.Z`)
+4. Offers whichever is behind: the SD card files, the firmware, or both
+5. If the SD card files are to be updated, checks that enough memory is free, and asks before going on if not
+6. If the SD card files are to be updated, creates a backup archive
 7. Downloads and extracts SD card files, then updates `/version.txt`
 8. Downloads firmware to the uf2-loader directory
 
 ### `update check`
 
-Same as `update` but stops after comparing versions. Does not download or install anything. Useful for a quick "is there something new?" check.
+Same as `update` but stops after reporting what is behind. Does not download or install anything. Useful for a quick "is there something new?" check.
 
 ### `update config`
 
@@ -85,6 +85,10 @@ The updater fetches the latest tag from the forge's API:
 - **Forgejo/Gitea:** `GET https://{host}/api/v1/repos/{owner}/{repo}/tags?limit=1`
 
 The response is a small JSON array (under 1KB). Only the first tag's `name` field is used. This is compared against the version string in `/version.txt` using semver comparison (`vX.Y.Z` format). A `/version.txt` without an `X.Y.Z` number, which is what an archive built from an untagged commit carries, counts as older than any release.
+
+The running firmware is compared with the same tag, separately from the SD card files. If the SD card files are current but the firmware is older, which is what a failed or declined firmware download leaves behind, `update` reports `Firmware update available!` and offers the firmware alone, with no memory check or backup since nothing else on the card changes. The firmware's version only changes once the uf2-loader has installed the file, so a firmware that is downloaded but not yet installed is still reported: the updater says the file is already in the loader directory, repeats the install steps and asks `Download firmware again? [y/N]`.
+
+A firmware that is already at the latest release is not offered. A firmware whose version has no `X.Y.Z` number (a build from a tree without tags) cannot be compared: it is offered alongside an SD card update, as before, but is never reported as behind on its own.
 
 ### Backup
 
@@ -119,6 +123,8 @@ Firmware `.uf2` files are downloaded to the uf2-loader application directory:
 | `pico2`, `pico2_w`, `pimoroni_pico_plus2_w_rp2350` (RP2350) | `/pico2-apps/` |
 
 The board type is detected automatically from `sys.board` and mapped to the short name `build.sh` uses, which replaces the `{board}` placeholder in the `uf2_asset` config field so the correct firmware variant is downloaded.
+
+If the download fails, the updater reports `Update incomplete: no firmware was downloaded.` Run `update` again to retry: the SD card files are then current and only the firmware is offered.
 
 To install the firmware after downloading:
 
@@ -225,7 +231,9 @@ The release workflow then stages a draft release with the assets; publish it fro
 
 **"Could not parse tags response"** -- The forge may require authentication, or the repo may have no tags. Verify the repo is public and has at least one tag.
 
-**"Already up to date"** -- The version in `/version.txt` matches or is newer than the latest tag. To force a re-install, edit `/version.txt` to an older version or delete it.
+**"Already up to date"** -- The version in `/version.txt` and the running firmware both match or are newer than the latest tag. To force a re-install of the SD card files, edit `/version.txt` to an older version or delete it.
+
+**"Firmware update available!" after installing it** -- The updater reads the version of the firmware that is running. Check the `Firmware:` line it prints; if that still shows the old version, the new `.uf2` was downloaded but not selected in the uf2-loader.
 
 **Backup fails** -- Check that there is enough free space on the SD card. The backup archives the entire `lua/` directory which can be several hundred KB.
 

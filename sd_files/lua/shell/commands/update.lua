@@ -162,6 +162,22 @@ local function version_newer(a, b)
   return a3 > b3
 end
 
+-- nil when the running firmware's version has no X.Y.Z number: that
+-- is someone's own build, which no release can be said to replace
+local function firmware_behind(latest)
+  local v = sys.version
+  if not v or not v:match("^v?%d+%.%d+%.%d+") then return nil end
+  return version_newer(latest, v)
+end
+
+local function write_install_steps(fw_name, fw_dir)
+  term.write("To install firmware:\n")
+  term.write("  1. Reboot while holding " .. c.yellow
+    .. "Up Arrow" .. c.white .. " to enter uf2-loader\n")
+  term.write("  2. Select " .. c.cyan .. fw_name
+    .. c.white .. " from /" .. fw_dir .. "/\n")
+end
+
 -- ensure a directory exists, creating parents as needed
 local function ensure_dir(path)
   if path == "" then return true end
@@ -341,48 +357,74 @@ local function do_update(args, sh)
   term.write(c.cyan .. " Latest version: " .. c.white
     .. latest .. "\n\n")
 
-  -- compare
-  if current and not version_newer(latest, current) then
+  -- the card and the firmware are compared separately, so that a
+  -- firmware left behind by an earlier update is offered again
+  local sd_behind = not current or version_newer(latest, current)
+  local fw_behind = sys.board and firmware_behind(latest)
+  if not sd_behind and not fw_behind then
     sh:success("Already up to date!")
     return
   end
 
-  -- check-only mode
-  if args[1] == "check" then
-    term.write(c.green .. "Update available: " .. c.white
-      .. latest .. "\n")
-    term.write("Run 'update' to install.\n")
-    return
-  end
-
-  -- confirm with user
-  term.write(c.green .. "Update available!" .. c.white .. "\n\n")
-
-  -- determine what's available
   local sd_name = asset_name(cfg.sd_asset, latest)
   local sd_url = asset_url(cfg, latest, sd_name)
   local fw_name = asset_name(cfg.uf2_asset, latest)
   local fw_url = asset_url(cfg, latest, fw_name)
   local fw_dir = uf2_dir()
+  local fw_dest = fw_dir .. "/" .. fw_name
+  -- a firmware of unknown version is offered alongside the card's files
+  local fw_offered = sys.board and fw_behind ~= false
+  -- sys.version only changes once the loader has installed the file
+  local fw_waiting = fw_offered and fs.exists(fw_dest)
 
-  term.write("Available:\n")
-  term.write("  1. SD card files (" .. sd_name .. ")\n")
-  if sys.board then
-    term.write("  2. Firmware for " .. sys.board
-      .. " (" .. fw_name .. ")\n")
+  if sd_behind then
+    term.write(c.green .. "Update available!" .. c.white .. "\n\n")
+    term.write("Available:\n")
+    term.write("  1. SD card files (" .. sd_name .. ")\n")
+    if fw_offered then
+      term.write("  2. Firmware for " .. sys.board
+        .. " (" .. fw_name .. ")\n")
+    elseif sys.board then
+      term.write("Firmware is up to date.\n")
+    end
+  else
+    term.write("SD card files are up to date.\n")
+    term.write(c.green .. "Firmware update available!" .. c.white .. "\n")
+    term.write("  " .. fw_name .. "\n")
   end
   term.write("\n")
+
+  if fw_waiting then
+    term.write("The firmware is already in /" .. fw_dir .. "/\n")
+    term.write("but has not been installed.\n")
+    write_install_steps(fw_name, fw_dir)
+    term.write("\n")
+  end
+
+  -- check-only mode
+  if args[1] == "check" then
+    if sd_behind then
+      term.write("Run 'update' to install.\n")
+    elseif not fw_waiting then
+      term.write("Run 'update' to download it.\n")
+    end
+    return
+  end
 
   -- ask what to update
   local do_sd = false
   local do_fw = false
+  local ans
 
-  local ans = term.read("Update SD card files? [Y/n]: ")
-  ans = ans and ans:lower() or "y"
-  if ans == "" or ans == "y" then do_sd = true end
+  if sd_behind then
+    ans = term.read("Update SD card files? [Y/n]: ")
+    ans = ans and ans:lower() or "y"
+    if ans == "" or ans == "y" then do_sd = true end
+  end
 
-  if sys.board then
-    ans = term.read("Download firmware update? [y/N]: ")
+  if fw_offered then
+    ans = term.read(fw_waiting and "Download firmware again? [y/N]: "
+      or "Download firmware update? [y/N]: ")
     ans = ans and ans:lower() or "n"
     if ans == "y" then do_fw = true end
   end
@@ -392,30 +434,33 @@ local function do_update(args, sh)
     return
   end
 
-  -- a session short of memory can fail partway, when the card already
-  -- holds some of the new files
-  if memory_is_short() then
-    term.write("\n")
-    sh:warn("memory is low or fragmented.")
-    term.write("The update may fail; rebooting first is safer.\n")
-    ans = term.read("Continue anyway? [y/N]: ")
-    ans = ans and ans:lower() or "n"
-    if ans ~= "y" then
-      term.write("Cancelled.\n")
-      return
+  -- only the card's files are at risk, so a firmware download alone
+  -- needs neither the memory check nor a backup
+  if do_sd then
+    -- a session short of memory can fail partway, when the card already
+    -- holds some of the new files
+    if memory_is_short() then
+      term.write("\n")
+      sh:warn("memory is low or fragmented.")
+      term.write("The update may fail; rebooting first is safer.\n")
+      ans = term.read("Continue anyway? [y/N]: ")
+      ans = ans and ans:lower() or "n"
+      if ans ~= "y" then
+        term.write("Cancelled.\n")
+        return
+      end
     end
-  end
 
-  -- backup current installation
-  term.write("\n")
-  local ok, backup_err = create_backup(current, sh)
-  if not ok then
-    sh:warn("Backup failed: " .. (backup_err or "unknown"))
-    ans = term.read("Continue without backup? [y/N]: ")
-    ans = ans and ans:lower() or "n"
-    if ans ~= "y" then
-      term.write("Cancelled.\n")
-      return
+    term.write("\n")
+    local ok, backup_err = create_backup(current, sh)
+    if not ok then
+      sh:warn("Backup failed: " .. (backup_err or "unknown"))
+      ans = term.read("Continue without backup? [y/N]: ")
+      ans = ans and ans:lower() or "n"
+      if ans ~= "y" then
+        term.write("Cancelled.\n")
+        return
+      end
     end
   end
   term.write("\n")
@@ -456,7 +501,6 @@ local function do_update(args, sh)
   local fw_saved = false
   if do_fw then
     ensure_dir(fw_dir)
-    local fw_dest = fw_dir .. "/" .. fw_name
     term.write("Downloading " .. fw_name .. "...\n")
 
     local bytes, dl_err = download_file(fw_url, fw_dest, sh)
@@ -478,6 +522,8 @@ local function do_update(args, sh)
   else
     term.write(c.yellow .. "Update incomplete: no firmware was downloaded."
       .. c.white .. "\n")
+    term.write("Run " .. c.cyan .. "update" .. c.white
+      .. " again to retry it.\n")
   end
   if do_sd then
     term.write("SD files updated to " .. latest .. "\n")
@@ -485,11 +531,8 @@ local function do_update(args, sh)
       .. " to reload shell commands.\n")
   end
   if fw_saved then
-    term.write("\nTo install firmware:\n")
-    term.write("  1. Reboot while holding " .. c.yellow
-      .. "Up Arrow" .. c.white .. " to enter uf2-loader\n")
-    term.write("  2. Select " .. c.cyan .. fw_name
-      .. c.white .. " from /" .. fw_dir .. "/\n")
+    term.write("\n")
+    write_install_steps(fw_name, fw_dir)
   end
   return complete
 end
