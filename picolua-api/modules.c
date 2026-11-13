@@ -22,7 +22,8 @@
 static int l_fs_editor(lua_State* L) {
 	const char* path = luaL_optstring(L, 1, "");
 
-	start_editor(L, path);
+	const char* err = start_editor(L, path);
+	if (err) return luaL_error(L, "cannot edit %s: %s", path, err);
 
 	return 0;
 }

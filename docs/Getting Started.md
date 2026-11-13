@@ -54,6 +54,10 @@ The `filename` parameter is optional, and if omitted, the editor will prompt you
 | Ctrl-V        | Paste clipboard            |
 | Ctrl-L        | Toggle line numbers        |
 
+An open file takes roughly one and three quarter times its size in memory: the 41 KB `shell.lua` needs a little over 70 KB of the 170 KB or so that a freshly started shell has free on an RP2350 board. `edit` refuses a file that does not fit, with `not enough memory`, and leaves it untouched. If memory runs out while editing, the status line says so; nothing already typed is lost, and F1 still saves.
+
+F1 writes the text to a file beside the original (`name.~tmp`) and renames it over the original only when all of it is written, so a save that fails partway (a full card, say) leaves the old file as it was. The card needs room for both for that moment.
+
 ### ComputerCraft editor
 
 Previously PicoCalc Lua relied on bundling an editor orignally made for the [CC: Tweaked](https://github.com/cc-tweaked/CC-Tweaked) project due to its ease of portability for being written in Lua. However, this editor consumes too much RAM to be used on RP2040 devices and is only suitable for RP2350.

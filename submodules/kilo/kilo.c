@@ -20,26 +20,22 @@
 #include "fs.h"
 #include "sound.h"
 #include "corelua.h"
-#include "pico/platform.h"
-
-// picolua lets an allocation fail, but the editor has no way on without one,
-// so it halts as it did before rather than write through a NULL pointer
-static void *kilo_checked(void *p) {
-	if (!p) panic("Out of memory");
-	return p;
-}
-#define malloc(size) kilo_checked(malloc(size))
-#define realloc(p, size) kilo_checked(realloc(p, size))
 
 /*** defines ***/
 
 #define KILO_VERSION "0.2-PicoLua"
 #define KILO_TAB_STOP 2
 #define KILO_QUIT_TIMES 3
+#define KILO_ROW_STEP 256
+#define KILO_SCRATCH_STEP 64
+#define KILO_OUT_SIZE 512
+
+#define STATUS_NOMEM   "\x1b[7;91m!! Out of memory !!\x1b[m Save (F1) and quit (F2)"
 
 #define STATUS_DEFAULT "\x1b[7mF1\x1b[27m Save \x1b[7mF2\x1b[27m Quit \x1b[7mF3\x1b[27m Find \x1b[7mF4\x1b[27m Mark \x1b[7mF5\x1b[27m Run"
 #define STATUS_MARK    "Mark Mode \x1b[7m^X\x1b[27m Cut \x1b[7m^C\x1b[27m Copy \x1b[7m^V\x1b[27m Paste \x1b[7mESC\x1b[27m Leave"
 #define TEMP_FILENAME "~tmp.lua"
+#define SAVE_SUFFIX ".~tmp"
 
 enum editorKey {
 	KEY_NULL = 0,       /* NULL */
@@ -103,14 +99,11 @@ struct editorSyntax {
 	int flags;
 };
 
+// a row holds its text and nothing else, since three copies of every line did not fit a 40 KB file in the heap
 typedef struct erow {
-	int idx;
-	int size;
-	int rsize;
 	char *chars;
-	char *render;
-	unsigned char *hl;
-	int hl_open_comment;
+	unsigned size : 31;
+	unsigned hl_open_comment : 1;
 } erow;
 
 struct editorConfig {
@@ -122,7 +115,14 @@ struct editorConfig {
 	int screenrows;
 	int screencols;
 	int numrows;
+	int rowcap;
 	erow *row;
+	char *render;
+	unsigned char *hl;
+	int rsize;
+	int rcap;
+	int match_row, match_rx, match_len;
+	bool nomem;
 	int numclipboard;
 	erow *clipboard;
 	int dirty;
@@ -138,6 +138,17 @@ struct editorConfig {
 struct editorConfig E;
 
 lua_State* L_state;
+
+// Lua's heap is this heap, so its garbage is given back before an allocation is called failed
+static void *kilo_realloc(void *p, size_t size) {
+	void *q = realloc(p, size);
+	if (!q) {
+		lua_gc(L_state, LUA_GCCOLLECT);
+		q = realloc(p, size);
+		if (!q) E.nomem = true;
+	}
+	return q;
+}
 
 /*** filetypes ***/
 
@@ -291,11 +302,46 @@ int is_separator(int c) {
 	return isspace(c) || c == '\0' || strchr(",.()+-/*=~%<>[];", c) != NULL;
 }
 
-void editorUpdateSyntax(erow *row) {
-	row->hl = realloc(row->hl, row->rsize);
-	memset(row->hl, HL_NORMAL, row->rsize);
+// with no room to grow, the length already held is given and the row is shown cut short
+static int editorScratch(int need) {
+	if (need > E.rcap) {
+		int cap = (need + KILO_SCRATCH_STEP - 1) / KILO_SCRATCH_STEP * KILO_SCRATCH_STEP;
+		char *render = kilo_realloc(E.render, cap + 1);
+		if (render) E.render = render;
+		unsigned char *hl = render ? kilo_realloc(E.hl, cap) : NULL;
+		if (hl) {
+			E.hl = hl;
+			E.rcap = cap;
+		}
+	}
+	return need < E.rcap ? need : E.rcap;
+}
 
-	if (E.syntax == NULL) return;
+void editorRenderRow(erow *row) {
+	int tabs = 0;
+	int j;
+	for (j = 0; j < row->size; j++)
+		if (row->chars[j] == '\t') tabs++;
+
+	int cap = editorScratch(row->size + tabs*(KILO_TAB_STOP - 1));
+
+	int idx = 0;
+	for (j = 0; j < row->size && idx < cap; j++) {
+		if (row->chars[j] == '\t') {
+			E.render[idx++] = ' ';
+			while (idx % KILO_TAB_STOP != 0 && idx < cap) E.render[idx++] = ' ';
+		} else {
+			E.render[idx++] = row->chars[j];
+		}
+	}
+	E.render[idx] = '\0';
+	E.rsize = idx;
+}
+
+int editorHighlight(int in_comment) {
+	memset(E.hl, HL_NORMAL, E.rsize);
+
+	if (E.syntax == NULL) return 0;
 
 	char **keywords = E.syntax->keywords;
 
@@ -309,18 +355,17 @@ void editorUpdateSyntax(erow *row) {
 
 	int prev_sep = 1;
 	int in_string = 0;
-	int in_comment = (row->idx > 0 && E.row[row->idx - 1].hl_open_comment);
 
 	int i = 0;
-	while (i < row->rsize) {
-		char c = row->render[i];
-		unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
+	while (i < E.rsize) {
+		char c = E.render[i];
+		unsigned char prev_hl = (i > 0) ? E.hl[i - 1] : HL_NORMAL;
 
 		if (mcs_len && mce_len && !in_string) {
 			if (in_comment) {
-				row->hl[i] = HL_MLCOMMENT;
-				if (!strncmp(&row->render[i], mce, mce_len)) {
-					memset(&row->hl[i], HL_MLCOMMENT, mce_len);
+				E.hl[i] = HL_MLCOMMENT;
+				if (!strncmp(&E.render[i], mce, mce_len)) {
+					memset(&E.hl[i], HL_MLCOMMENT, mce_len);
 					i += mce_len;
 					in_comment = 0;
 					prev_sep = 1;
@@ -329,8 +374,8 @@ void editorUpdateSyntax(erow *row) {
 					i++;
 					continue;
 				}
-			} else if (!strncmp(&row->render[i], mcs, mcs_len)) {
-				memset(&row->hl[i], HL_MLCOMMENT, mcs_len);
+			} else if (!strncmp(&E.render[i], mcs, mcs_len)) {
+				memset(&E.hl[i], HL_MLCOMMENT, mcs_len);
 				i += mcs_len;
 				in_comment = 1;
 				continue;
@@ -338,17 +383,17 @@ void editorUpdateSyntax(erow *row) {
 		}
 
 		if (scs_len && !in_string && !in_comment) {
-			if (!strncmp(&row->render[i], scs, scs_len)) {
-				memset(&row->hl[i], HL_COMMENT, row->rsize - i);
+			if (!strncmp(&E.render[i], scs, scs_len)) {
+				memset(&E.hl[i], HL_COMMENT, E.rsize - i);
 				break;
 			}
 		}
 
 		if (E.syntax->flags & HL_HIGHLIGHT_STRINGS) {
 			if (in_string) {
-				row->hl[i] = HL_STRING;
-				if (c == '\\' && i + 1 < row->rsize) {
-					row->hl[i + 1] = HL_STRING;
+				E.hl[i] = HL_STRING;
+				if (c == '\\' && i + 1 < E.rsize) {
+					E.hl[i + 1] = HL_STRING;
 					i += 2;
 					continue;
 				}
@@ -359,7 +404,7 @@ void editorUpdateSyntax(erow *row) {
 			} else {
 				if (c == '"' || c == '\'') {
 					in_string = c;
-					row->hl[i] = HL_STRING;
+					E.hl[i] = HL_STRING;
 					i++;
 					continue;
 				}
@@ -369,7 +414,7 @@ void editorUpdateSyntax(erow *row) {
 		if (E.syntax->flags & HL_HIGHLIGHT_NUMBERS) {
 			if ((isdigit(c) && (prev_sep || prev_hl == HL_NUMBER)) ||
 					(c == '.' && prev_hl == HL_NUMBER)) {
-				row->hl[i] = HL_NUMBER;
+				E.hl[i] = HL_NUMBER;
 				i++;
 				prev_sep = 0;
 				continue;
@@ -383,9 +428,9 @@ void editorUpdateSyntax(erow *row) {
 				int kw2 = keywords[j][klen - 1] == '|';
 				if (kw2) klen--;
 
-				if (!strncmp(&row->render[i], keywords[j], klen) &&
-						is_separator(row->render[i + klen])) {
-					memset(&row->hl[i], kw2 ? HL_KEYWORD2 : HL_KEYWORD1, klen);
+				if (!strncmp(&E.render[i], keywords[j], klen) &&
+						is_separator(E.render[i + klen])) {
+					memset(&E.hl[i], kw2 ? HL_KEYWORD2 : HL_KEYWORD1, klen);
 					i += klen;
 					break;
 				}
@@ -400,10 +445,36 @@ void editorUpdateSyntax(erow *row) {
 		i++;
 	}
 
-	int changed = (row->hl_open_comment != in_comment);
-	row->hl_open_comment = in_comment;
-	if (changed && row->idx + 1 < E.numrows)
-		editorUpdateSyntax(&E.row[row->idx + 1]);
+	return in_comment;
+}
+
+void editorRenderRowAt(int at) {
+	editorRenderRow(&E.row[at]);
+	editorHighlight(at > 0 && E.row[at - 1].hl_open_comment);
+}
+
+// a loop and not a call per row, because a comment opened at the top of a long file changes every row below it
+void editorUpdateSyntax(int at) {
+	for (; at < E.numrows; at++) {
+		int open = 0;
+		if (E.syntax) {
+			editorRenderRow(&E.row[at]);
+			open = editorHighlight(at > 0 && E.row[at - 1].hl_open_comment);
+		}
+		if (open == E.row[at].hl_open_comment) break;
+		E.row[at].hl_open_comment = open;
+	}
+}
+
+void editorUpdateSyntaxAll() {
+	int open = 0;
+	for (int at = 0; at < E.numrows; at++) {
+		if (E.syntax) {
+			editorRenderRow(&E.row[at]);
+			open = editorHighlight(open);
+		}
+		E.row[at].hl_open_comment = open;
+	}
 }
 
 int editorSyntaxToColor(int hl) {
@@ -433,12 +504,7 @@ void editorSelectSyntaxHighlight() {
 			if ((is_ext && ext && !strcmp(ext, s->filematch[i])) ||
 					(!is_ext && strstr(E.filename, s->filematch[i]))) {
 				E.syntax = s;
-
-				int filerow;
-				for (filerow = 0; filerow < E.numrows; filerow++) {
-					editorUpdateSyntax(&E.row[filerow]);
-				}
-
+				editorUpdateSyntaxAll();
 				return;
 			}
 			i++;
@@ -472,114 +538,102 @@ int editorRowRxToCx(erow *row, int rx) {
 	return cx;
 }
 
-void editorUpdateRow(erow *row) {
-	int tabs = 0;
-	int j;
-	for (j = 0; j < row->size; j++)
-		if (row->chars[j] == '\t') tabs++;
+bool editorInsertRow(int at, char *s, size_t len) {
+	if (at < 0 || at > E.numrows) return false;
 
-	free(row->render);
-	row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
+	char *chars = kilo_realloc(NULL, len + 1);
+	if (!chars) return false;
 
-	int idx = 0;
-	for (j = 0; j < row->size; j++) {
-		if (row->chars[j] == '\t') {
-			row->render[idx++] = ' ';
-			while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
-		} else {
-			row->render[idx++] = row->chars[j];
+	// grown in steps, as growing by a row moves the whole table for every line of a file
+	if (E.numrows == E.rowcap) {
+		erow *rows = kilo_realloc(E.row, sizeof(erow) * (E.rowcap + KILO_ROW_STEP));
+		if (!rows) {
+			free(chars);
+			return false;
 		}
+		E.row = rows;
+		E.rowcap += KILO_ROW_STEP;
 	}
-	row->render[idx] = '\0';
-	row->rsize = idx;
-
-	editorUpdateSyntax(row);
-}
-
-void editorInsertRow(int at, char *s, size_t len) {
-	if (at < 0 || at > E.numrows) return;
-
-	E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 	memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
-	for (int j = at + 1; j <= E.numrows; j++) E.row[j].idx++;
 
-	E.row[at].idx = at;
-
+	memcpy(chars, s, len);
+	chars[len] = '\0';
+	E.row[at].chars = chars;
 	E.row[at].size = len;
-	E.row[at].chars = malloc(len + 1);
-	memcpy(E.row[at].chars, s, len);
-	E.row[at].chars[len] = '\0';
-
-	E.row[at].rsize = 0;
-	E.row[at].render = NULL;
-	E.row[at].hl = NULL;
-	E.row[at].hl_open_comment = 0;
-	editorUpdateRow(&E.row[at]);
+	// what the row below was coloured against, so that it is redone only if this row changes it
+	E.row[at].hl_open_comment = (at > 0 && E.row[at - 1].hl_open_comment);
 
 	E.numrows++;
+	editorUpdateSyntax(at);
 	E.dirty++;
-}
-
-void editorFreeRow(erow *row) {
-	free(row->render);
-	free(row->chars);
-	free(row->hl);
+	return true;
 }
 
 void editorDelRow(int at) {
 	if (at < 0 || at >= E.numrows) return;
-	editorFreeRow(&E.row[at]);
+	free(E.row[at].chars);
 	memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
-	for (int j = at; j < E.numrows - 1; j++) E.row[j].idx--;
 	E.numrows--;
+	editorUpdateSyntax(at);
 	E.dirty++;
 }
 
-void editorRowInsertString(erow *row, int at, char *s, size_t len) {
-	if (len < 1) return;
+bool editorRowInsertString(erow *row, int at, char *s, size_t len) {
+	if (len < 1) return true;
 	if (at < 0 || at > row->size) at = row->size;
-	row->chars = realloc(row->chars, row->size + len + 1);
+	char *chars = kilo_realloc(row->chars, row->size + len + 1);
+	if (!chars) return false;
+	row->chars = chars;
 	memmove(&row->chars[at + len], &row->chars[at], row->size - at + 1);
 	memcpy(&row->chars[at], s, len);
 	row->size += len;
 	row->chars[row->size] = '\0';
-	editorUpdateRow(row);
+	editorUpdateSyntax(row - E.row);
 	E.dirty++;
+	return true;
 }
 
-void editorRowInsertChar(erow *row, int at, int c) {
+bool editorRowInsertChar(erow *row, int at, int c) {
 	if (at < 0 || at > row->size) at = row->size;
-	row->chars = realloc(row->chars, row->size + 2);
+	char *chars = kilo_realloc(row->chars, row->size + 2);
+	if (!chars) return false;
+	row->chars = chars;
 	memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
 	row->size++;
 	row->chars[at] = c;
-	editorUpdateRow(row);
+	editorUpdateSyntax(row - E.row);
 	E.dirty++;
+	return true;
 }
 
-void editorRowAppendString(erow *row, char *s, size_t len) {
-	editorRowInsertString(row, row->size, s, len);
+bool editorRowAppendString(erow *row, char *s, size_t len) {
+	return editorRowInsertString(row, row->size, s, len);
 }
 
 void editorRowDelChar(erow *row, int at) {
 	if (at < 0 || at >= row->size) return;
 	memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
 	row->size--;
-	editorUpdateRow(row);
+	editorUpdateSyntax(row - E.row);
 	E.dirty++;
 }
 
-void editorCopyRow(erow* source, int idx, int at, int len) {
+bool editorCopyRow(erow* source, int idx, int at, int len) {
 	erow* dest = &E.clipboard[idx];
-	dest->idx = idx;
+	dest->chars = kilo_realloc(NULL, len + 1);
+	if (!dest->chars) return false;
 	dest->size = len;
-	dest->chars = malloc(len + 1);
 	memcpy(dest->chars, &source->chars[at], len);
 	dest->chars[len] = '\0';
-	dest->rsize = 0;
-	dest->render = NULL;
-	dest->hl = NULL;
 	dest->hl_open_comment = 0;
+	return true;
+}
+
+void editorFreeClipboard() {
+	for (int i = 0; i < E.numclipboard; ++i) free(E.clipboard[i].chars);
+	free(E.clipboard);
+	E.clipboard = NULL;
+	E.numclipboard = 0;
 }
 
 /*** editor operations ***/
@@ -597,88 +651,83 @@ void editorOrderMarkPos(int* m1x, int* m1y, int* m2x, int* m2y) {
 			*m2x = E.cx;
 			*m2y = E.cy;
 		}
+		// the cursor can stand on the line after the last, which has no row
+		if (*m2y >= E.numrows && E.numrows > 0) {
+			*m2y = E.numrows - 1;
+			*m2x = E.row[*m2y].size;
+		}
 	}
 }
 
 void editorInsertChar(int c) {
 	if (E.cy == E.numrows) {
-		editorInsertRow(E.numrows, "", 0);
+		if (!editorInsertRow(E.numrows, "", 0)) return;
 	}
-	editorRowInsertChar(&E.row[E.cy], E.cx, c);
+	if (!editorRowInsertChar(&E.row[E.cy], E.cx, c)) return;
 	E.cx++;
 	E.redraw_rows = true;
 }
 
-void editorInsertNewline(bool tabs) {
+bool editorInsertNewline(bool tabs) {
 	int new_x = 0;
 	if (E.cx == 0) {
-		editorInsertRow(E.cy, "", 0);
+		if (!editorInsertRow(E.cy, "", 0)) return false;
 	} else {
 		erow *row = &E.row[E.cy];
 		// count tab indentation in current row
 		int num_tabs = 0;
 		while (*&row->chars[num_tabs] == '\t') num_tabs++;
-		editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
+		if (!editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx)) return false;
 		// add tabs to new row
 		if (tabs) {
-			new_x = num_tabs;
-			while (num_tabs--) editorRowInsertChar(&E.row[E.cy+1], 0, '\t');
+			while (new_x < num_tabs && editorRowInsertChar(&E.row[E.cy+1], 0, '\t')) new_x++;
 		}
 		row = &E.row[E.cy];
 		row->size = E.cx;
 		row->chars[row->size] = '\0';
-		editorUpdateRow(row);
+		editorUpdateSyntax(E.cy);
 	}
 	E.cy++;
 	E.cx = new_x;
 	E.redraw_rows = true;
+	return true;
 }
 
 void editorInsertClipboard() {
 	if (E.numclipboard < 1) return;
 
 	for (int y = 0; y < E.numclipboard; y++) {
-		if (y > 0) editorInsertNewline(false);
-		editorRowInsertString(&E.row[E.cy], E.cx, E.clipboard[y].chars, E.clipboard[y].size);
+		if (y > 0 && !editorInsertNewline(false)) break;
+		if (E.cy == E.numrows && !editorInsertRow(E.numrows, "", 0)) break;
+		if (!editorRowInsertString(&E.row[E.cy], E.cx, E.clipboard[y].chars, E.clipboard[y].size)) break;
 		E.cx += E.clipboard[y].size;
 	}
 
 	E.redraw_rows = true;
 }
 
-void editorCopyMark() {
-	if (E.mode != MODE_MARK) return;
-	if (E.cy == E.marky && E.cx == E.markx) return; // make sure mark is not empty
+bool editorCopyMark() {
+	if (E.mode != MODE_MARK) return false;
+	if (E.cy == E.marky && E.cx == E.markx) return false; // make sure mark is not empty
 
-	int m1x, m1y, m2x, m2y, y;
+	int m1x, m1y, m2x, m2y;
 	editorOrderMarkPos(&m1x, &m1y, &m2x, &m2y);
 
-	// free old clipboard
-	for (int i = 0; i < E.numclipboard; ++i) {
-		erow* row = &E.clipboard[i];
-		if (row->chars) { free(row->chars); row->chars = NULL; }
-		if (row->render) { free(row->render); row->render = NULL; }
-		if (row->hl) { free(row->hl); row->hl = NULL; }
-	}
-	free(E.clipboard);
-	E.clipboard = NULL;
+	editorFreeClipboard();
 
-	// make new clipboard
-	E.numclipboard = m2y - m1y + 1;
-	E.clipboard = malloc(sizeof(erow) * (E.numclipboard));
-	
-	if (E.numclipboard > 1) {
-		// first line
-		editorCopyRow(&E.row[m1y], 0, m1x, E.row[m1y].size - m1x);
-		// intermediaries
-		for (y = m1y + 1; y < m2y; y++) {
-			editorCopyRow(&E.row[y], y - m1y, 0, E.row[y].size);
+	E.clipboard = kilo_realloc(NULL, sizeof(erow) * (m2y - m1y + 1));
+	if (!E.clipboard) return false;
+
+	for (int y = m1y; y <= m2y; y++) {
+		int from = (y == m1y) ? m1x : 0;
+		int to = (y == m2y) ? m2x : (int)E.row[y].size;
+		if (!editorCopyRow(&E.row[y], y - m1y, from, to - from)) {
+			editorFreeClipboard();
+			return false;
 		}
-		// last line
-		editorCopyRow(&E.row[y], y - m1y, 0, m2x);
-	} else {
-		editorCopyRow(&E.row[m1y], 0, m1x, m2x - m1x);
+		E.numclipboard++;
 	}
+	return true;
 }
 
 void editorDelChar() {
@@ -690,13 +739,14 @@ void editorDelChar() {
 		editorRowDelChar(row, E.cx - 1);
 		E.cx--;
 	} else {
-		E.cx = E.row[E.cy - 1].size;
-		editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
+		int cx = E.row[E.cy - 1].size;
+		if (!editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size)) return;
+		E.cx = cx;
 		editorDelRow(E.cy);
 		E.cy--;
 	}
 
-	E.want_rx = editorRowCxToRx(row, E.cx);
+	E.want_rx = editorRowCxToRx(&E.row[E.cy], E.cx);
 	E.redraw_rows = true;
 }
 
@@ -705,7 +755,6 @@ void editorDelMark() {
 	if (E.cy == E.marky && E.cx == E.markx) return; // make sure mark is not empty
 
 	int m1x, m1y, m2x, m2y, tail_len, y;
-	char* tail;
 
 	editorOrderMarkPos(&m1x, &m1y, &m2x, &m2y);
 
@@ -714,18 +763,21 @@ void editorDelMark() {
 
 	if (m2y == m1y) { // selection is in the same row
 		// put it in what's left of mark
-		strncpy(&E.row[m1y].chars[m1x], &E.row[m2y].chars[m2x], tail_len);
+		memmove(&E.row[m1y].chars[m1x], &E.row[m2y].chars[m2x], tail_len);
 		E.row[m1y].size -= m2x - m1x;
 		E.row[m1y].chars[E.row[m1y].size] = '\0';
-		editorUpdateRow(&E.row[m1y]);
+		editorUpdateSyntax(m1y);
 		E.dirty++;
 	} else { // multiple rows
-		// put it in what's left of mark
-		E.row[m1y].size = m1x;
-		E.row[m1y].chars[m1x] = '\0';
-		editorUpdateRow(&E.row[m1y]);
-		editorRowAppendString(&E.row[m1y], &E.row[m2y].chars[m2x], tail_len);
-	
+		// nothing is cut until the joined row has its room, so a failure leaves the text whole
+		char *chars = kilo_realloc(E.row[m1y].chars, m1x + tail_len + 1);
+		if (!chars) return;
+		memcpy(&chars[m1x], &E.row[m2y].chars[m2x], tail_len);
+		chars[m1x + tail_len] = '\0';
+		E.row[m1y].chars = chars;
+		E.row[m1y].size = m1x + tail_len;
+		editorUpdateSyntax(m1y);
+
 		// delete everything that was inbetween
 		for (y = 0; y < m2y - m1y; y++) {
 			editorDelRow(m1y + 1);
@@ -743,15 +795,15 @@ void editorIndentMark(int tab) {
 	int m1x, m1y, m2x, m2y, y;
 	editorOrderMarkPos(&m1x, &m1y, &m2x, &m2y);
 
-	for (y = m1y; y <= m2y; y++) {
+	for (y = m1y; y <= m2y && y < E.numrows; y++) {
 		if (tab == TAB) {
+			if (!editorRowInsertChar(&E.row[y], 0, '\t')) break;
 			if (y == E.cy) E.cx++;
 			if (y == E.marky) E.markx++;
-			editorRowInsertChar(&E.row[y], 0, '\t');
 		} else if (tab == CTRL_TAB) {
 			if (E.row[y].chars[0] == '\t') {
-				if (y == E.cy) E.cx--;
-				if (y == E.marky) E.markx--;
+				if (y == E.cy && E.cx > 0) E.cx--;
+				if (y == E.marky && E.markx > 0) E.markx--;
 				editorRowDelChar(&E.row[y], 0);
 			}
 		}
@@ -762,59 +814,38 @@ void editorIndentMark(int tab) {
 
 /*** file i/o ***/
 
-char *editorRowsToString(int *buflen) {
-	int totlen = 0;
-	int j;
-	for (j = 0; j < E.numrows; j++)
-		totlen += E.row[j].size + 1;
-	*buflen = totlen;
-
-	char *buf = malloc(totlen);
-	char *p = buf;
-	for (j = 0; j < E.numrows; j++) {
-		memcpy(p, E.row[j].chars, E.row[j].size);
-		p += E.row[j].size;
-		*p = '\n';
-		p++;
-	}
-
-	return buf;
-}
-
-void editorOpen(const char *filename) {
+const char *editorOpen(const char *filename) {
 	FIL fp;
 	FRESULT res;
 
 	E.dirty = 0;
 	free(E.filename);
 	size_t fnlen = strlen(filename)+1;
-	E.filename = malloc(fnlen);
+	E.filename = kilo_realloc(NULL, fnlen);
+	if (!E.filename) return "not enough memory";
 	memcpy(E.filename,filename,fnlen);
 
 	editorSelectSyntaxHighlight();
 
 	if (fs_exists(filename)) { // if it doesn't exist we're just starting a new file
 		res = f_open(&fp, filename, FA_READ);
-		if (res != FR_OK) {
-			if (errno != ENOENT) {
-				perror("Opening file");
-				exit(1);
-			}
-			return;
-		}
-	
+		if (res != FR_OK) return fs_error_strings[res];
+
 		char *line = NULL;
 		UINT len;
 		while(!f_eof(&fp)) {
-			// a read error leaves the file position where it was
-			if (fs_readline(&fp, &line, &len) != FR_OK) break;
-			editorInsertRow(E.numrows,line,len);
+			// a file cut short here would replace the whole one at the next save
+			res = fs_readline(&fp, &line, &len);
+			if (res == FR_OK && !editorInsertRow(E.numrows,line,len)) res = FR_NOT_ENOUGH_CORE;
+			if (res != FR_OK || E.nomem) break;
 		}
 		free(line);
 		f_close(&fp);
 		E.dirty = 0;
+		if (res == FR_NOT_ENOUGH_CORE || E.nomem) return "not enough memory";
+		if (res != FR_OK) return fs_error_strings[res];
 	}
-	return;
+	return NULL;
 }
 
 void editorSave(bool temp) {
@@ -830,27 +861,59 @@ void editorSave(bool temp) {
 		filename = E.filename;
   }
 
-	int len;
-	int wlen;
-	char *buf = editorRowsToString(&len);
+	int len = 0;
+	UINT wlen;
 
 	FIL fp;
 	FRESULT res;
 
-	res = f_open(&fp, filename, FA_CREATE_ALWAYS|FA_READ|FA_WRITE);
+	// written beside the file and renamed over it, so that a save that fails partway leaves the old file whole
+	char beside[FF_MAX_LFN + 1 + sizeof(SAVE_SUFFIX)];
+	const char *target = filename;
+	if (!temp && snprintf(beside, sizeof(beside), "%s" SAVE_SUFFIX, filename) < (int)sizeof(beside)) target = beside;
+
+	res = f_open(&fp, target, FA_CREATE_ALWAYS|FA_READ|FA_WRITE);
 	if (res != FR_OK) {
-		free(buf);
-		f_close(&fp);
 		editorSetStatusMessage("Can't save! I/O error: %s", fs_error_strings[res]);
 		return;
 	}
 
-	f_write(&fp, buf, len, &wlen);
+	bool full = false;
+	for (int j = 0; j < E.numrows && res == FR_OK && !full; j++) {
+		erow *row = &E.row[j];
+		// the newline goes out in place of the terminator, as one buffer of the whole file may not be had
+		row->chars[row->size] = '\n';
+		res = f_write(&fp, row->chars, row->size + 1, &wlen);
+		row->chars[row->size] = '\0';
+		len += wlen;
+		full = (wlen != row->size + 1);
+	}
 
-	f_close(&fp);
-	free(buf);
+	FRESULT closed = f_close(&fp);
+	if (res == FR_OK) res = closed;
+
+	if (res == FR_OK && !full && target != filename) {
+		res = f_unlink(filename);
+		if (res == FR_OK || res == FR_NO_FILE) {
+			res = f_rename(target, filename);
+			if (res != FR_OK) {
+				// the copy beside is now the only one on the card, so it is kept and named
+				editorSetStatusMessage("Can't rename! Text is in %.80s", target);
+				return;
+			}
+		}
+	}
+	if ((res != FR_OK || full) && target != filename) f_unlink(target);
+	if (res != FR_OK) {
+		editorSetStatusMessage("Can't save! I/O error: %s", fs_error_strings[res]);
+		return;
+	}
+	if (full) {
+		editorSetStatusMessage("Can't save! Card is full");
+		return;
+	}
 	if (!temp) E.dirty = 0;
-	editorSetStatusMessage("%d bytes written on disk", wlen);
+	editorSetStatusMessage("%d bytes written on disk", len);
 	return;
 }
 
@@ -860,14 +923,7 @@ void editorFindCallback(char *query, int key) {
 	static int last_match = -1;
 	static int direction = 1;
 
-	static int saved_hl_line;
-	static char *saved_hl = NULL;
-
-	if (saved_hl) {
-		memcpy(E.row[saved_hl_line].hl, saved_hl, E.row[saved_hl_line].rsize);
-		free(saved_hl);
-		saved_hl = NULL;
-	}
+	E.match_row = -1;
 
 	if (key == '\r' || key == '\x1b') {
 		last_match = -1;
@@ -891,17 +947,17 @@ void editorFindCallback(char *query, int key) {
 		else if (current == E.numrows) current = 0;
 
 		erow *row = &E.row[current];
-		char *match = strstr(row->render, query);
+		editorRenderRow(row);
+		char *match = strstr(E.render, query);
 		if (match) {
 			last_match = current;
 			E.cy = current;
-			E.cx = editorRowRxToCx(row, match - row->render);
+			E.cx = editorRowRxToCx(row, match - E.render);
 			E.rowoff = E.numrows;
 
-			saved_hl_line = current;
-			saved_hl = malloc(row->rsize);
-			memcpy(saved_hl, row->hl, row->rsize);
-			memset(&row->hl[match - row->render], HL_MATCH, strlen(query));
+			E.match_row = current;
+			E.match_rx = match - E.render;
+			E.match_len = strlen(query);
 			break;
 		}
 	}
@@ -930,24 +986,27 @@ void editorFind() {
 
 /*** append buffer ***/
 
+// a fixed size sent on as it fills, so that the screen can still be drawn when the heap is spent
 struct abuf {
-	char *b;
 	int len;
+	char b[KILO_OUT_SIZE];
 };
 
-#define ABUF_INIT {NULL, 0}
-
-void abAppend(struct abuf *ab, const char *s, int len) {
-	char *new = realloc(ab->b, ab->len + len);
-
-	if (new == NULL) return;
-	memcpy(&new[ab->len], s, len);
-	ab->b = new;
-	ab->len += len;
+void abFlush(struct abuf *ab) {
+	if (ab->len) write(STDOUT_FILENO, ab->b, ab->len);
+	ab->len = 0;
 }
 
-void abFree(struct abuf *ab) {
-	free(ab->b);
+void abAppend(struct abuf *ab, const char *s, int len) {
+	while (len > 0) {
+		if (ab->len == KILO_OUT_SIZE) abFlush(ab);
+		int n = KILO_OUT_SIZE - ab->len;
+		if (n > len) n = len;
+		memcpy(&ab->b[ab->len], s, n);
+		ab->len += n;
+		s += n;
+		len -= n;
+	}
 }
 
 /*** output ***/
@@ -1016,11 +1075,15 @@ void editorDrawRows(struct abuf *ab, int margin) {
 					abAppend(ab, "~", 1);
 				}
 			} else {
-				int len = E.row[filerow].rsize - E.coloff;
+				editorRenderRowAt(filerow);
+				if (filerow == E.match_row) {
+					for (int k = E.match_rx; k < E.match_rx + E.match_len && k < E.rsize; k++) E.hl[k] = HL_MATCH;
+				}
+				int len = E.rsize - E.coloff;
 				if (len < 0) len = 0;
 				if (len > screencols) len = screencols;
-				char *c = &E.row[filerow].render[E.coloff];
-				unsigned char *hl = &E.row[filerow].hl[E.coloff];
+				char *c = &E.render[E.coloff];
+				unsigned char *hl = &E.hl[E.coloff];
 				int current_color = -1;
 				int j;
 				if (E.linenums) {
@@ -1079,7 +1142,7 @@ void editorDrawRows(struct abuf *ab, int margin) {
 				if (E.mode == MODE_MARK) {
 					// edge case: mark starts at end of line
 					if (in_mark == 0 && filerow == m1y) {
-						rowmx = editorRowCxToRx(&E.row[filerow], m2x);
+						rowmx = editorRowCxToRx(&E.row[filerow], m1x);
 						if (rowmx >= len) in_mark = 1;
 					}
 					// edge case: mark ends at end of line
@@ -1156,7 +1219,8 @@ void editorRefreshScreen() {
 	// permanent statuses
 	if (E.mode == MODE_MARK) editorSetStatusMessage(STATUS_MARK);
 
-	struct abuf ab = ABUF_INIT;
+	struct abuf ab;
+	ab.len = 0;
 
 	abAppend(&ab, "\x1b[m", 3);
 	abAppend(&ab, "\x1b[?25l", 6);
@@ -1173,8 +1237,7 @@ void editorRefreshScreen() {
 
 	abAppend(&ab, "\x1b[?25h", 6);
 
-	write(STDOUT_FILENO, ab.b, ab.len);
-	abFree(&ab);
+	abFlush(&ab);
 }
 
 void editorSetStatusMessage(const char *fmt, ...) {
@@ -1189,7 +1252,8 @@ void editorSetStatusMessage(const char *fmt, ...) {
 
 char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
 	size_t bufsize = 128;
-	char *buf = malloc(bufsize);
+	char *buf = kilo_realloc(NULL, bufsize);
+	if (!buf) return NULL;
 
 	size_t buflen = 0;
 	buf[0] = '\0';
@@ -1214,11 +1278,16 @@ char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
 			}
 		} else if (!iscntrl(c) && c < 128) {
 			if (buflen == bufsize - 1) {
-				bufsize *= 2;
-				buf = realloc(buf, bufsize);
+				char *grown = kilo_realloc(buf, bufsize * 2);
+				if (grown) {
+					buf = grown;
+					bufsize *= 2;
+				}
 			}
-			buf[buflen++] = c;
-			buf[buflen] = '\0';
+			if (buflen < bufsize - 1) {
+				buf[buflen++] = c;
+				buf[buflen] = '\0';
+			}
 		}
 
 		if (callback) callback(buf, c);
@@ -1284,6 +1353,7 @@ int editorMoveCursor(int key) {
 
 bool in_word(int off) {
 	int look_at = E.cx + off;
+	if (E.cy >= E.numrows) return false;
 	if (look_at < 0) return false;
 	if (look_at >= E.row[E.cy].size) return false;
 	char c = E.row[E.cy].chars[look_at];
@@ -1378,8 +1448,9 @@ int editorProcessKeypress() {
 				break;
 
 			case CTRL_TAB:
-				if (E.row[E.cy].chars[0] == '\t') {
+				if (E.cy < E.numrows && E.row[E.cy].chars[0] == '\t') {
 					editorRowDelChar(&E.row[E.cy], 0);
+					if (E.cx > 0) E.cx--;
 					E.redraw_rows = true;
 				}
 				break;
@@ -1406,8 +1477,8 @@ int editorProcessKeypress() {
 				break;
 
 			case CTRL_X:
-				editorCopyMark();
-				editorDelMark();
+				// text that could not be copied is not then cut
+				if (editorCopyMark()) editorDelMark();
 				break;
 
 			case ESC:
@@ -1492,7 +1563,14 @@ void initEditor() {
 	E.rowoff = 0;
 	E.coloff = 0;
 	E.numrows = 0;
+	E.rowcap = 0;
 	E.row = NULL;
+	E.render = NULL;
+	E.hl = NULL;
+	E.rsize = 0;
+	E.rcap = 0;
+	E.match_row = -1;
+	E.nomem = false;
 	E.numclipboard = 0;
 	E.clipboard = NULL;
 	E.dirty = 0;
@@ -1508,7 +1586,24 @@ void initEditor() {
 	E.screenrows -= 2;
 }
 
-int start_editor(lua_State* L, const char* filename) {
+static void editorFree() {
+	for (int i = 0; i < E.numrows; ++i) free(E.row[i].chars);
+	free(E.row);
+	E.row = NULL;
+	E.numrows = 0;
+
+	editorFreeClipboard();
+
+	free(E.render);
+	E.render = NULL;
+	free(E.hl);
+	E.hl = NULL;
+
+	free(E.filename);
+	E.filename = NULL;
+}
+
+const char *start_editor(lua_State* L, const char* filename) {
 	L_state = L;
 
 	// consider kilo to be outside lua context
@@ -1516,38 +1611,31 @@ int start_editor(lua_State* L, const char* filename) {
 	lua_post_script(L);
 
 	initEditor();
-	if (filename && filename[0] != '\0') editorOpen(filename);
+
+	const char *err = NULL;
+	if (!editorScratch(KILO_SCRATCH_STEP)) err = "not enough memory";
+	else if (filename && filename[0] != '\0') err = editorOpen(filename);
+	if (err) {
+		editorFree();
+		lua_pre_script(L);
+		return err;
+	}
 
 	editorSetStatusMessage(STATUS_DEFAULT);
 
 	while (1) {
+		if (E.nomem) {
+			E.nomem = false;
+			// mark mode shows its own status line and takes neither F1 nor F2
+			if (E.mode == MODE_MARK) editorEnterExitMark();
+			editorSetStatusMessage(STATUS_NOMEM);
+			E.redraw_rows = true;
+		}
 		editorRefreshScreen();
 		if (editorProcessKeypress() != 0) break;
 	}
 
-	// quitting, clear everything
-	for (int i = 0; i < E.numrows; ++i) {
-		erow* row = &E.row[i];
-		if (row->chars) { free(row->chars); row->chars = NULL; }
-		if (row->render) { free(row->render); row->render = NULL; }
-		if (row->hl) { free(row->hl); row->hl = NULL; }
-	}
-	free(E.row);
-	E.row = NULL;
-
-	for (int i = 0; i < E.numclipboard; ++i) {
-		erow* row = &E.clipboard[i];
-		if (row->chars) { free(row->chars); row->chars = NULL; }
-		if (row->render) { free(row->render); row->render = NULL; }
-		if (row->hl) { free(row->hl); row->hl = NULL; }
-	}
-	free(E.clipboard);
-	E.clipboard = NULL;
-
-	if (E.filename) {
-		free(E.filename);
-		E.filename = NULL;
-	}
+	editorFree();
 
 	write(STDOUT_FILENO, "\x1b[2J", 4);
 	write(STDOUT_FILENO, "\x1b[H", 3);
@@ -1555,5 +1643,5 @@ int start_editor(lua_State* L, const char* filename) {
 	// returning to lua context
 	lua_pre_script(L);
 
-	return 0;
+	return NULL;
 }
