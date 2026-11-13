@@ -1,0 +1,1 @@
+local n = 12 -- named later<ENTER>--[[ open<ENTER>still open<ENTER>]] print("x")<F1>abc<ESC><F1>work.luaa<BS><ENTER><UP>!<F1><F2>

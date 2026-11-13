@@ -1,0 +1,80 @@
+local function Gnested(a, b)
+  if a then
+    if b then
+      return math.max(a, b)
+    end
+  end
+  return nil
+end
+
+local v1 = 7 -- line 1
+local v2 = 14 -- line 2
+local v3 = 21 -- line 3
+local v4 = 28 -- line 4
+local v5 = 35 -- line 5
+local v6 = 42 -- line 6
+local v7 = 49 -- line 7
+local v8 = 56 -- line 8
+local v9 = 63 -- line 9
+local v10 = 70 -- line 10
+local v11 = 77 -- line 11
+local v12 = 84 -- line 12
+local v13 = 91 -- line 13
+local v14 = 98 -- line 14
+local v15 = 105 -- line 15
+local v16 = 112 -- line 16
+local v17 = 119 -- line 17
+local v18 = 126 -- line 18
+local v19 = 133 -- line 19
+local v20 = 140 -- line 20
+local v21 = 147 -- line 21
+local v22 = 154 -- line 22
+local v23 = 161 -- line 23
+local v24 = 168 -- line 24
+local v25 = 175 -- line 25
+local v26 = 182 -- line 26
+local v27 = 189 -- line 27
+local v28 = 196 -- line 28
+local v29 = 203 -- line 29
+work.lua                                   22/72  87%
+1576 bytes written on disk
+yyyyy.yyyyyyyy
+..yy...yyyy
+....yy...yyyy
+......yyyyyy.gggg
+....yyy
+..yyy
+..yyyyyy.yyy
+yyy
+
+yyyyy......r.ccccccccc
+yyyyy......rr.ccccccccc
+yyyyy......rr.ccccccccc
+yyyyy......rr.ccccccccc
+yyyyy......rr.ccccccccc
+yyyyy......rr.ccccccccc
+yyyyy......rr.ccccccccc
+yyyyy......rr.ccccccccc
+yyyyy......rr.ccccccccc
+yyyyy.......rr.cccccccccc
+yyyyy.......rr.cccccccccc
+yyyyy.......rr.cccccccccc
+yyyyy.......rr.cccccccccc
+yyyyy.......rr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+yyyyy.......rrr.cccccccccc
+#################################################GGGG
+

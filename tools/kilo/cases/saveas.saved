@@ -1,0 +1,4 @@
+local n = 12 -- named later
+--[[ open
+!still open
+]] print("x")

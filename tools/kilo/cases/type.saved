@@ -1,0 +1,10 @@
+local function hello(name)
+	print("hi " .. name)
+	return 42
+end
+
+--[[ a comment
+still comment ]] x = 1.5
+hello('w')
+		deep!
+		er

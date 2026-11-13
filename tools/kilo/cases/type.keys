@@ -1,0 +1,2 @@
+local function hello(name)<ENTER><TAB>print("hi " .. name)<ENTER>return 42<ENTER><BS>end<ENTER><ENTER>
+--[[ a comment<ENTER>still comment ]] x = 1.5<ENTER>hello('w')<ENTER><TAB><TAB>deep<ENTER>er<UP><END>!<F1><F2>

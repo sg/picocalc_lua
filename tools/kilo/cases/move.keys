@@ -1,0 +1,3 @@
+<DOWN*3><END> -- note<HOME><DEL><DEL><DOWN*7><END><LEFT*4>X<S-LEFT*3>Y<S-RIGHT*2>Z
+<PGDN>a<PGDN>b<PGUP>c<DOWN*18><END>!<HOME><HOME>#<C-l><DOWN*30>q<C-l><UP*5><RIGHT*60><LEFT*70>w
+<DOWN*200>past the end<ENTER>and more<UP*3><END><RIGHT>r<F1><F2>

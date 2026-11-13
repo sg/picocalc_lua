@@ -22,6 +22,12 @@ Run the first two after any change to the game or to a stock bot.
 
 `tools/gzip/check.sh [more.gz ...]` builds uzlib on the host with the gzip window in 4 KB blocks, as the firmware has it, and in one piece, and compares what each decompresses with `gzip -dc`. Run it after touching `submodules/uzlib` or `picolua-api/gzip.c`.
 
+## kilo
+
+`tools/kilo/check.sh` builds the firmware's editor (`submodules/kilo`) for the host with the address and undefined-behaviour sanitizers and runs it from key scripts: the cases in `tools/kilo/cases` must leave the saved file and the screen they expect, then the heap is limited, every allocation is failed in turn, the card is filled, and random keys are typed in heaps of random sizes (`RANDOM_RUNS` and `SEED` set how many and which). Nothing may crash, leak or lose text. Run it after any change to the editor.
+
+`UPDATE=1 tools/kilo/check.sh` rewrites what the cases expect, so read the diff before keeping it. The key script format and the harness's settings are at the top of `harness.c`. Pointers are 8 bytes on the host, so the row table costs twice what it does on the device and the heap figures it prints are high by that much.
+
 ## sim
 
 For picocalc-sim, expected in `picocalc_sim` beside this repository.
